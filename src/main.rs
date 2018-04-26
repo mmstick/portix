@@ -1,3 +1,4 @@
+#![feature(pattern_parentheses)]
 extern crate gtk;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,25 +43,24 @@ fn main() {
     hbox1.add(&gtk::Button::new_with_label("Refresh"));
     hbox1.add(&search);
 
-    pub fn make_tree_view_column(title: &str) -> gtk::TreeViewColumn {
+    pub fn make_tree_view_column(title: &str, column_number: i32) -> gtk::TreeViewColumn {
         let column = gtk::TreeViewColumn::new();
         let cell = gtk::CellRendererText::new();
         column.set_visible(true);
         column.set_title(title);
         column.pack_start(&cell, false);
-        column.add_attribute(&cell, "text", 0);
+        column.add_attribute(&cell, "text", column_number);
         column
     }
 
-    let column_category = make_tree_view_column("Categories");
-    let column_pkg_num = make_tree_view_column("# Pkgs");
+    let column_category = make_tree_view_column("Categories", 0);
+    let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
     let mut pkg_data: BTreeMap<String, BTreeSet<backend::Pkg>> = BTreeMap::new();
     backend::parse_data_with_eix(&mut pkg_data);
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     for (category, pkgs) in pkg_data.iter() {
-        //println!("{}: {:?}", category, pkgs);
         model_category.insert_with_values(None, &[0,1], &[&category, &(pkgs.len() as u64)]);
     }
 
@@ -71,23 +71,23 @@ fn main() {
     let scrollable_category = gtk::ScrolledWindow::new(None, None);
     scrollable_category.add(&tree_view_category);
 
-    let column_packages = make_tree_view_column("Packages");
-    let column_installed = make_tree_view_column("Installed");
-    let column_recommended = make_tree_view_column("Recommended");
-    let column_download_size = make_tree_view_column("Download Size");
-    let column_description = make_tree_view_column("Description");
+    let column_packages = make_tree_view_column("Packages", 0);
+    let column_installed = make_tree_view_column("Installed", 1);
+    let column_recommended = make_tree_view_column("Recommended", 2);
+    let column_download_size = make_tree_view_column("Download Size", 3);
+    let column_description = make_tree_view_column("Description", 4);
 
     let model_pkg_list = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::String, gtk::Type::String, gtk::Type::String, gtk::Type::String]);
 
-    let tree_view_pkg = gtk::TreeView::new_with_model(&model_pkg_list);
-    tree_view_pkg.append_column(&column_packages);
-    tree_view_pkg.append_column(&column_installed);
-    tree_view_pkg.append_column(&column_recommended);
-    tree_view_pkg.append_column(&column_download_size);
-    tree_view_pkg.append_column(&column_description);
-    tree_view_pkg.set_visible(true);
+    let tree_view_pkgs = gtk::TreeView::new_with_model(&model_pkg_list);
+    tree_view_pkgs.append_column(&column_packages);
+    tree_view_pkgs.append_column(&column_installed);
+    tree_view_pkgs.append_column(&column_recommended);
+    tree_view_pkgs.append_column(&column_download_size);
+    tree_view_pkgs.append_column(&column_description);
+    tree_view_pkgs.set_visible(true);
     let scrollable_pkg = gtk::ScrolledWindow::new(None, None);
-    scrollable_pkg.add(&tree_view_pkg);
+    scrollable_pkg.add(&tree_view_pkgs);
 
     let paned_category_pkg = gtk::Paned::new(gtk::Orientation::Horizontal);
     paned_category_pkg.add1(&scrollable_category);
@@ -118,6 +118,20 @@ fn main() {
     window.set_default_size(1200, 800);
     window.add(&vbox);
     window.show_all();
+
+    tree_view_category.get_selection().connect_changed(move |selected_category| {
+        selected_category.set_mode(gtk::SelectionMode::Single);
+
+        if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
+            if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
+                let pkgs = pkg_data.get(&selected).unwrap();
+                for (i, pkg) in pkgs.iter().enumerate() {
+                    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
+                    model_pkg_list.set(&tree_iter_pkgs, &[0, 4], &[&pkg.name, &pkg.desc]);
+                }
+            }
+        }
+    });
 
     window.connect_delete_event(|_, _| {
         gtk::main_quit();

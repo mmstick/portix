@@ -5,9 +5,9 @@ use std::fs;
 #[allow(dead_code)]
 #[derive(Debug, Eq)]
 pub struct Pkg {
-    name: String,
-    versions: Vec<String>,
-    desc: String,
+    pub name: String,
+    pub versions: Vec<String>,
+    pub desc: String,
 }
 
 impl Pkg {
@@ -58,7 +58,7 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                     let mut item_split = item.split("/");
                     (item_split.next().unwrap(), item_split.next().unwrap())
                 };
-                println!("{:?} from {:?} as {:?} with {:?}", category, pkg, versions, desc);
+                //println!("{:?} from {:?} as {:?} with {:?}", category, pkg, versions, desc);
                 map.entry(category.to_string()).or_insert(BTreeSet::new()).insert(Pkg::new(pkg, versions.clone(), desc));
             }
             versions.clear();

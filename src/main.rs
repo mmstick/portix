@@ -120,6 +120,7 @@ fn main() {
     window.show_all();
 
     tree_view_category.get_selection().connect_changed(move |selected_category| {
+        model_pkg_list.clear();
         selected_category.set_mode(gtk::SelectionMode::Single);
 
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {

@@ -7,15 +7,12 @@ use std::fs;
 pub struct Pkg {
     name: String,
     versions: Vec<String>,
+    desc: String,
 }
 
 impl Pkg {
-    pub fn new(name: &str) -> Pkg {
-        Pkg {name: name.to_string(), versions: Vec::new() }
-    }
-
-    pub fn new_with_versions(name: &str, versions: Vec<String>) -> Pkg {
-        Pkg {name: name.to_string(), versions: versions }
+    pub fn new(name: &str, versions: Vec<String>, desc: &str) -> Pkg {
+        Pkg {name: name.to_string(), versions: Vec::new(), desc: desc.to_string() }
     }
 }
 
@@ -40,18 +37,20 @@ impl PartialEq for Pkg {
 pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
     let output = String::from_utf8(Command::new("sh")
             .arg("-c")
-            .arg(r"EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages|sed -re 's/-([0-9])/ \1/'")
+            .arg(r"NAMEVERSION='<category>/<name> <version> <description>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages")
             .output()
             .expect("failed to get eix output")
             .stdout
         ).expect("eix output is not UTF-8 compatible");
 
     let mut item = "this string is not empty for a reason";
+    let mut desc = "";
     let mut versions: Vec<String> = Vec::new();
     for line in output.lines() {
-        let mut split = line.split(' ');
         if line.starts_with(item) {
-            split.next();
+            let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
+            let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
+            versions.push(version.to_string());
         }
         else {
             if !versions.is_empty() {
@@ -59,13 +58,16 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                     let mut item_split = item.split("/");
                     (item_split.next().unwrap(), item_split.next().unwrap())
                 };
-                //println!("{:?} with {:?} as {:?}", category, pkg, versions);
-                map.entry(category.to_string()).or_insert(BTreeSet::new()).insert(Pkg::new_with_versions(pkg, versions.clone()));
+                println!("{:?} from {:?} as {:?} with {:?}", category, pkg, versions, desc);
+                map.entry(category.to_string()).or_insert(BTreeSet::new()).insert(Pkg::new(pkg, versions.clone(), desc));
             }
-            item = split.next().unwrap();
             versions.clear();
+            item = &line[0..line.find(' ').unwrap()];
+            let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
+            let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
+            desc = &version_with_desc[(version_with_desc.find(' ').unwrap() + 1)..version_with_desc.len()];
+            versions.push(version.to_string());
         }
-        versions.push(split.next().unwrap().to_string());
     }
 }
 
@@ -108,7 +110,7 @@ pub fn parse_data_with_portageq(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                 if package_dir.path().is_file() || package.starts_with(".") {
                     continue;
                 }
-                map.get_mut(&category).unwrap().insert(Pkg::new(&package));
+                //map.get_mut(&category).unwrap().insert(Pkg::new(&package));
             }
         }
     }

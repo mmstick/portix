@@ -46,8 +46,12 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
     let mut item = "this string is not empty for a reason";
     let mut desc = "";
     let mut versions: Vec<String> = Vec::new();
-    for line in output.lines() {
-        if line.starts_with(item) {
+    let mut lines: Vec<_> = output.lines().collect();
+    lines.push("extra line needed to get last item");
+    for line in lines.iter() {
+        println!("{:?}", line);
+        let current_item = &line[0..line.find(' ').unwrap()];
+        if current_item == item {
             let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
             let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
             versions.push(version.to_string());

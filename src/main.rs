@@ -67,7 +67,9 @@ fn main() {
     let tree_view_category = gtk::TreeView::new_with_model(&model_category);
     tree_view_category.append_column(&column_category);
     tree_view_category.append_column(&column_pkg_num);
-    //tree_view_category.set_vexpand(true);
+    tree_view_category.set_visible(true);
+    let scrollable_category = gtk::ScrolledWindow::new(None, None);
+    scrollable_category.add(&tree_view_category);
 
     let column_packages = make_tree_view_column("Packages");
     let column_installed = make_tree_view_column("Installed");
@@ -83,12 +85,13 @@ fn main() {
     tree_view_pkg.append_column(&column_recommended);
     tree_view_pkg.append_column(&column_download_size);
     tree_view_pkg.append_column(&column_description);
-    //tree_view_pkg.set_vexpand(true);
-    //tree_view_pkg.set_hexpand(true);
+    tree_view_pkg.set_visible(true);
+    let scrollable_pkg = gtk::ScrolledWindow::new(None, None);
+    scrollable_pkg.add(&tree_view_pkg);
 
     let paned_category_pkg = gtk::Paned::new(gtk::Orientation::Horizontal);
-    paned_category_pkg.add1(&tree_view_category);
-    paned_category_pkg.add2(&tree_view_pkg);
+    paned_category_pkg.add1(&scrollable_category);
+    paned_category_pkg.add2(&scrollable_pkg);
     paned_category_pkg.set_wide_handle(true);
     paned_category_pkg.set_hexpand(true);
 
@@ -121,5 +124,5 @@ fn main() {
         Inhibit(false)
     });
 
-    //gtk::main();
+    gtk::main();
 }

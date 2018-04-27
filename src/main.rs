@@ -1,7 +1,6 @@
 #![feature(pattern_parentheses)]
 extern crate gtk;
 
-use std::collections::{BTreeMap, BTreeSet};
 use gtk::prelude::*;
 
 use gtk::{Window, WindowType};
@@ -56,11 +55,10 @@ fn main() {
     let column_category = make_tree_view_column("Categories", 0);
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
-    let mut pkg_data: BTreeMap<String, BTreeSet<backend::Pkg>> = BTreeMap::new();
-    backend::parse_data_with_eix(&mut pkg_data);
+    let mut pkg_data = backend::parse_data();
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
-    for (category, pkgs) in pkg_data.iter() {
+    for (category, pkgs) in pkg_data.all_packages_map.iter() {
         model_category.insert_with_values(None, &[0,1], &[&category, &(pkgs.len() as u64)]);
     }
 
@@ -123,7 +121,7 @@ fn main() {
 
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
-                let pkgs = pkg_data.get(&selected).unwrap();
+                let pkgs = pkg_data.all_packages_map.get(&selected).unwrap();
                 for (i, pkg) in pkgs.iter().enumerate() {
                     let tree_iter_pkgs = model_pkg_list.insert(i as i32);
                     model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);

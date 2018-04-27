@@ -12,8 +12,22 @@ pub struct Pkg {
     pub desc: String,
 }
 
+pub struct Data {
+    pub all_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
+    pub installed_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
+}
+
+impl Data {
+    pub fn new() -> Self {
+        Data {
+            all_packages_map: BTreeMap::new(),
+            installed_packages_map: BTreeMap::new(),
+        }
+    }
+}
+
 impl Pkg {
-    pub fn new(name: &str, versions: Vec<String>, installed_version: &str, recommended_version: &str, desc: &str) -> Pkg {
+    pub fn new(name: &str, versions: Vec<String>, installed_version: &str, recommended_version: &str, desc: &str) -> Self {
         Pkg {
             name: name.to_string(),
             versions: versions,
@@ -42,7 +56,9 @@ impl PartialEq for Pkg {
     }
 }
 
-pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
+pub fn parse_data() -> Data {
+    let mut data = Data::new();
+
     // TODO: run in parallel
     let mut output = String::from_utf8(Command::new("sh")
             .arg("-c")
@@ -53,20 +69,6 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
         ).expect("eix output is not UTF-8 compatible");
 
     // TODO: run in parallel
-    let recommended_version_output = String::from_utf8(Command::new("sh")
-            .arg("-c")
-            .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
-            .output()
-            .expect("failed to get eix output")
-            .stdout
-        ).expect("eix output is not UTF-8 compatible");
-    let recommended_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
-        let item = &line[0..line.find(' ').unwrap()];
-        let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
-        (item, version)
-    }).collect();
-
-    // TODO: run in parallel
     let installed_version_output = String::from_utf8(Command::new("sh")
             .arg("-c")
             .arg(r"qlist -ICv|sed -re 's/-([0-9])/ \1/'")
@@ -74,7 +76,21 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             .expect("failed to get qlist output")
             .stdout
         ).expect("qlist output is not UTF-8 compatible");
-    let installed_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
+    let installed_version_output_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
+        let item = &line[0..line.find(' ').unwrap()];
+        let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
+        (item, version)
+    }).collect();
+
+    // TODO: run in parallel
+    let recommended_version_output = String::from_utf8(Command::new("sh")
+            .arg("-c")
+            .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
+            .output()
+            .expect("failed to get eix output")
+            .stdout
+        ).expect("eix output is not UTF-8 compatible");
+    let recommended_version_output_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
         let item = &line[0..line.find(' ').unwrap()];
         let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
         (item, version)
@@ -126,29 +142,31 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                     let mut item_split = item.split("/");
                     (item_split.next().unwrap(), item_split.next().unwrap())
                 };
-                //println!("{:?} from {:?} as {:?} with {:?}", category, pkg, versions, desc);
-                map.entry(category.to_string())
-                   .or_insert(BTreeSet::new())
-                   .insert(Pkg::new(pkg,
-                                    versions.clone(),
-                                    installed_map.get(item).unwrap_or(&""),
-                                    recommended_map.get(item).unwrap_or({
-                                        let mut keyword = &"";
-                                        for global_keyword in global_keywords.iter() {
-                                            for arch in arch_list.iter() {
-                                                if global_keyword == arch {
-                                                    keyword = &"Not available";
-                                                    break;
-                                                }
-                                                else if *global_keyword == &format!("~{}", arch) {
-                                                    keyword = &"Keyworded";
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        keyword
-                                    }),
-                                    desc));
+                let installed_version = installed_version_output_map.get(item).unwrap_or(&"");
+                let recommended_version = recommended_version_output_map.get(item).unwrap_or({
+                    let mut keyword = &"";
+                    for global_keyword in global_keywords.iter() {
+                        for arch in arch_list.iter() {
+                            if global_keyword == arch {
+                                keyword = &"Not available";
+                                break;
+                            }
+                            else if *global_keyword == &format!("~{}", arch) {
+                                keyword = &"Keyworded";
+                                break;
+                            }
+                        }
+                    }
+                    keyword
+                });
+                data.all_packages_map.entry(category.to_string())
+                                .or_insert(BTreeSet::new())
+                                .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
+                if !installed_version.is_empty() {
+                    data.installed_packages_map.entry(category.to_string())
+                                          .or_insert(BTreeSet::new())
+                                          .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
+                }
             }
             versions.clear();
             item = &line[0..line.find(' ').unwrap()];
@@ -158,6 +176,7 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             versions.push(version.to_string());
         }
     }
+    data
 }
 
 #[allow(dead_code)]

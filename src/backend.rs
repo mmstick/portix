@@ -1,4 +1,5 @@
 use std::process::Command;
+use std::cell;
 use std::collections::{HashMap, BTreeMap, BTreeSet};
 use std::fs;
 
@@ -14,8 +15,12 @@ pub struct Pkg {
 
 #[derive(Clone, Debug)]
 pub struct Data {
+    // String == category
     pub all_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
+    // String == category
     pub installed_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
+    // String == set name
+    pub portage_sets_data: cell::RefCell<BTreeMap<String, BTreeSet<Pkg>>>,
 }
 
 impl Data {
@@ -23,6 +28,7 @@ impl Data {
         Data {
             all_packages_map: BTreeMap::new(),
             installed_packages_map: BTreeMap::new(),
+            portage_sets_data: cell::RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -142,6 +148,31 @@ impl Data {
                 let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
                 desc = &version_with_desc[(version_with_desc.find(' ').unwrap() + 1)..version_with_desc.len()];
                 versions.push(version.to_string());
+            }
+        }
+    }
+
+    pub fn parse_sets_data(&self) {
+        for set in fs::read_dir("/etc/portage/sets").expect("failed to find /etc/portage/sets directory") {
+            let set = set.expect("intermittent IO error");
+            let set_name = set.file_name().into_string().unwrap();
+            use ::std::io::BufRead;
+            let set_file = ::std::io::BufReader::new(fs::File::open(set.path()).unwrap());
+            for line in set_file.lines() {
+                let mut split = line.unwrap();
+                let mut split = split.split('/');
+                let (category, pkg) = {
+                    (split.next().unwrap(), split.next().unwrap())
+                }; 
+                for all_pkg in self.all_packages_map.get(category).unwrap() {
+                    if all_pkg.name == pkg {
+                        self.portage_sets_data.borrow_mut()
+                                              .entry(set_name.clone())
+                                              .or_insert(BTreeSet::new())
+                                              .insert(all_pkg.clone());
+                        break;
+                    }
+                }
             }
         }
     }

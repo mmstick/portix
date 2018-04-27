@@ -130,6 +130,12 @@ fn main() {
                     model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
                 }
             }
+            else if entry == "Sets" {
+                pkg_data_clone.parse_sets_data();
+                for (category, pkgs) in pkg_data_clone.portage_sets_data.borrow().iter() {
+                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+                }
+            }
         }
     });
 
@@ -140,13 +146,20 @@ fn main() {
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
-                let blank_set = std::collections::BTreeSet::new();
-                let pkgs = if entry == "Installed Packages"{
+                let mut blank_set = std::collections::BTreeSet::new();
+                let mut pkgs = if entry == "Installed Packages"{
                     //println!("{:?}", selected);
                     pkg_data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
                 }
                 else if entry == "All Packages" {
                     pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)
+                }
+                else if entry == "Sets" {
+                    pkg_data.parse_sets_data();
+                    // Alright, this time I disagree with the borrow checker, hope this doesn't segfault
+                    unsafe {
+                    (*pkg_data.portage_sets_data.as_ptr()).get(&selected).unwrap_or(&blank_set)
+                    }
                 }
                 else {
                     pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)

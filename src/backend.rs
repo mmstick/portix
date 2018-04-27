@@ -159,17 +159,19 @@ impl Data {
             use ::std::io::BufRead;
             let set_file = ::std::io::BufReader::new(fs::File::open(set.path()).unwrap());
             for line in set_file.lines() {
-                let mut split = line.unwrap();
-                let mut split = split.split('/');
+                let mut line = line.unwrap();
+                let mut split = line.split('/');
                 let (category, pkg) = {
                     (split.next().unwrap(), split.next().unwrap())
                 }; 
                 for all_pkg in self.all_packages_map.get(category).unwrap() {
                     if all_pkg.name == pkg {
+                        let mut all_pkg_clone = all_pkg.clone();
+                        all_pkg_clone.name = line.to_string();
                         self.portage_sets_data.borrow_mut()
                                               .entry(set_name.clone())
                                               .or_insert(BTreeSet::new())
-                                              .insert(all_pkg.clone());
+                                              .insert(all_pkg_clone);
                         break;
                     }
                 }

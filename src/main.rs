@@ -132,8 +132,8 @@ fn main() {
             }
             else if entry == "Sets" {
                 pkg_data_clone.parse_sets_data();
-                for (category, pkgs) in pkg_data_clone.portage_sets_data.borrow().iter() {
-                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+                for (set, pkgs) in pkg_data_clone.portage_sets_data.borrow().iter() {
+                    model_category.insert_with_values(None, &[0, 1], &[&set, &(pkgs.len() as u64)]);
                 }
             }
         }

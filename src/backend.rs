@@ -13,12 +13,12 @@ pub struct Pkg {
 }
 
 impl Pkg {
-    pub fn new(name: &str, versions: Vec<String>, installed_version: &str, recommened_version: &str, desc: &str) -> Pkg {
+    pub fn new(name: &str, versions: Vec<String>, installed_version: &str, recommended_version: &str, desc: &str) -> Pkg {
         Pkg {
             name: name.to_string(),
             versions: versions,
             installed_version: installed_version.to_string(),
-            recommended_version: recommened_version.to_string(),
+            recommended_version: recommended_version.to_string(),
             desc: desc.to_string()
         }
     }
@@ -71,9 +71,9 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             .arg("-c")
             .arg(r"qlist -ICv|sed -re 's/-([0-9])/ \1/'")
             .output()
-            .expect("failed to get eix output")
+            .expect("failed to get qlist output")
             .stdout
-        ).expect("eix output is not UTF-8 compatible");
+        ).expect("qlist output is not UTF-8 compatible");
     let installed_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
         let item = &line[0..line.find(' ').unwrap()];
         let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
@@ -85,9 +85,9 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             .arg("-c")
             .arg(r"emerge --info|grep ACCEPT_KEYWORDS")
             .output()
-            .expect("failed to get eix output")
+            .expect("failed to get emerge output")
             .stdout
-        ).expect("eix output is not UTF-8 compatible");
+        ).expect("emerge output is not UTF-8 compatible");
     let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()].split(' ').collect();
 
     // TODO: run in parallel
@@ -95,9 +95,9 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             .arg("-c")
             .arg(r"cat $(portageq get_repo_path / gentoo)/profiles/arch.list")
             .output()
-            .expect("failed to get eix output")
+            .expect("failed to get portageq output")
             .stdout
-        ).expect("eix output is not UTF-8 compatible");
+        ).expect("portageq output is not UTF-8 compatible");
     let arch_list = {
         let mut list = Vec::new();
         for arch in arch_list.lines() {

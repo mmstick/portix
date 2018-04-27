@@ -99,10 +99,36 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                                     recommended_map.get(item).unwrap_or({
                                         let mut keyword = &"";
                                         for global_keyword in global_keywords.iter() {
-                                            if *global_keyword == "amd64" {
+                                            if *global_keyword == "amd64" ||
+                                               *global_keyword == "x86" ||
+                                               *global_keyword == "arm" ||
+                                               *global_keyword == "arm64" ||
+                                               *global_keyword == "alpha" ||
+                                               *global_keyword == "hppa" ||
+                                               *global_keyword == "ia64" ||
+                                               *global_keyword == "m68k" ||
+                                               *global_keyword == "pcc" ||
+                                               *global_keyword == "pcc64" ||
+                                               *global_keyword == "s390" ||
+                                               *global_keyword == "sh" ||
+                                               *global_keyword == "sparc"
+                                            {
                                                 keyword = &"Not available";
                                             }
-                                            else if *global_keyword == "~amd64" {
+                                            else if *global_keyword == "~amd64" ||
+                                               *global_keyword == "~x86" ||
+                                               *global_keyword == "~arm" ||
+                                               *global_keyword == "~arm64" ||
+                                               *global_keyword == "~alpha" ||
+                                               *global_keyword == "~hppa" ||
+                                               *global_keyword == "~ia64" ||
+                                               *global_keyword == "~m68k" ||
+                                               *global_keyword == "~pcc" ||
+                                               *global_keyword == "~pcc64" ||
+                                               *global_keyword == "~s390" ||
+                                               *global_keyword == "~sh" ||
+                                               *global_keyword == "~sparc"
+                                            {
                                                 keyword = &"Keyworded";
                                             }
                                         }

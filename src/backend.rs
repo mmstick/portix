@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{HashMap, BTreeMap, BTreeSet};
 use std::fs;
 
 #[allow(dead_code)]
@@ -7,12 +7,18 @@ use std::fs;
 pub struct Pkg {
     pub name: String,
     pub versions: Vec<String>,
+    pub recommended_version: String,
     pub desc: String,
 }
 
 impl Pkg {
-    pub fn new(name: &str, versions: Vec<String>, desc: &str) -> Pkg {
-        Pkg {name: name.to_string(), versions: Vec::new(), desc: desc.to_string() }
+    pub fn new(name: &str, versions: Vec<String>, recommened_version: &str, desc: &str) -> Pkg {
+        Pkg {
+            name: name.to_string(),
+            versions: Vec::new(),
+            recommended_version: recommened_version.to_string(),
+            desc: desc.to_string()
+        }
     }
 }
 
@@ -43,6 +49,19 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             .stdout
         ).expect("eix output is not UTF-8 compatible");
 
+    let recommened_version_output = String::from_utf8(Command::new("sh")
+            .arg("-c")
+            .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
+            .output()
+            .expect("failed to get eix output")
+            .stdout
+        ).expect("eix output is not UTF-8 compatible");
+    let recommended_map: HashMap<_, _> = recommened_version_output.lines().map(|line| {
+        let item = &line[0..line.find(' ').unwrap()];
+        let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
+        (item, version)
+    }).collect();
+
     let mut item = "this string is not empty for a reason";
     let mut desc = "";
     let mut versions: Vec<String> = Vec::new();
@@ -61,7 +80,7 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                     (item_split.next().unwrap(), item_split.next().unwrap())
                 };
                 //println!("{:?} from {:?} as {:?} with {:?}", category, pkg, versions, desc);
-                map.entry(category.to_string()).or_insert(BTreeSet::new()).insert(Pkg::new(pkg, versions.clone(), desc));
+                map.entry(category.to_string()).or_insert(BTreeSet::new()).insert(Pkg::new(pkg, versions.clone(), recommended_map.get(item).unwrap_or(&"Keyworded"), desc));
             }
             versions.clear();
             item = &line[0..line.find(' ').unwrap()];

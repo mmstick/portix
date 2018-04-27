@@ -3,7 +3,7 @@ use std::collections::{HashMap, BTreeMap, BTreeSet};
 use std::fs;
 
 #[allow(dead_code)]
-#[derive(Debug, Eq)]
+#[derive(Clone, Debug, Eq)]
 pub struct Pkg {
     pub name: String,
     pub versions: Vec<String>,
@@ -12,6 +12,7 @@ pub struct Pkg {
     pub desc: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct Data {
     pub all_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
     pub installed_packages_map: BTreeMap<String, BTreeSet<Pkg>>,

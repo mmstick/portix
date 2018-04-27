@@ -55,7 +55,7 @@ fn main() {
     let column_category = make_tree_view_column("Categories", 0);
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
-    let mut pkg_data = backend::parse_data();
+    let pkg_data = backend::parse_data();
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     for (category, pkgs) in pkg_data.all_packages_map.iter() {
@@ -115,13 +115,41 @@ fn main() {
     window.add(&vbox);
     window.show_all();
 
+    let pkg_data_clone = pkg_data.clone();
+    combo_box.connect_changed(move |combo_box| {
+        if let Some(entry) = combo_box.get_active_text() {
+            model_category.clear();
+            if entry == "Installed Packages" {
+                for (category, pkgs) in pkg_data_clone.installed_packages_map.iter() {
+                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+                }
+            }
+            else if entry == "All Packages" {
+                for (category, pkgs) in pkg_data_clone.all_packages_map.iter() {
+                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+                }
+            }
+        }
+    });
+
     tree_view_category.get_selection().connect_changed(move |selected_category| {
         model_pkg_list.clear();
         selected_category.set_mode(gtk::SelectionMode::Single);
 
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
-                let pkgs = pkg_data.all_packages_map.get(&selected).unwrap();
+                let entry = combo_box.get_active_text().unwrap_or("".to_string());
+                let blank_set = std::collections::BTreeSet::new();
+                let pkgs = if entry == "Installed Packages"{
+                    //println!("{:?}", selected);
+                    pkg_data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
+                }
+                else if entry == "All Packages" {
+                    pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)
+                }
+                else {
+                    pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)
+                };
                 for (i, pkg) in pkgs.iter().enumerate() {
                     let tree_iter_pkgs = model_pkg_list.insert(i as i32);
                     model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);

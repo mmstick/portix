@@ -41,6 +41,7 @@ impl PartialEq for Pkg {
 }
 
 pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
+    // TODO: run in parallel
     let mut output = String::from_utf8(Command::new("sh")
             .arg("-c")
             .arg(r"NAMEVERSION='<category>/<name> <version> <description>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages")
@@ -49,6 +50,7 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             .stdout
         ).expect("eix output is not UTF-8 compatible");
 
+    // TODO: run in parallel
     let recommened_version_output = String::from_utf8(Command::new("sh")
             .arg("-c")
             .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
@@ -61,6 +63,17 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
         let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
         (item, version)
     }).collect();
+
+    // TODO: run in parallel
+    let global_keywords = String::from_utf8(Command::new("sh")
+            .arg("-c")
+            .arg(r"emerge --info|grep ACCEPT_KEYWORDS")
+            .output()
+            .expect("failed to get eix output")
+            .stdout
+        ).expect("eix output is not UTF-8 compatible");
+    let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()].split(' ').collect();
+    println!("{:?}", global_keywords);
 
     let mut item = "this string is not empty for a reason";
     let mut desc = "";
@@ -80,7 +93,21 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                     (item_split.next().unwrap(), item_split.next().unwrap())
                 };
                 //println!("{:?} from {:?} as {:?} with {:?}", category, pkg, versions, desc);
-                map.entry(category.to_string()).or_insert(BTreeSet::new()).insert(Pkg::new(pkg, versions.clone(), recommended_map.get(item).unwrap_or(&"Keyworded"), desc));
+                map.entry(category.to_string())
+                   .or_insert(BTreeSet::new())
+                   .insert(Pkg::new(pkg, versions.clone(),
+                                    recommended_map.get(item).unwrap_or({
+                                        let mut keyword = &"";
+                                        for global_keyword in global_keywords.iter() {
+                                            if *global_keyword == "amd64" {
+                                                keyword = &"Not available";
+                                            }
+                                            else if *global_keyword == "~amd64" {
+                                                keyword = &"Keyworded";
+                                            }
+                                        }
+                                        keyword
+                                    }), desc));
             }
             versions.clear();
             item = &line[0..line.find(' ').unwrap()];

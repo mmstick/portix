@@ -74,8 +74,7 @@ fn main() {
     let column_packages = make_tree_view_column("Packages", 0);
     let column_installed = make_tree_view_column("Installed", 1);
     let column_recommended = make_tree_view_column("Recommended", 2);
-    let column_download_size = make_tree_view_column("Download Size", 3);
-    let column_description = make_tree_view_column("Description", 4);
+    let column_description = make_tree_view_column("Description", 3);
 
     let model_pkg_list = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::String, gtk::Type::String, gtk::Type::String, gtk::Type::String]);
 
@@ -83,7 +82,6 @@ fn main() {
     tree_view_pkgs.append_column(&column_packages);
     tree_view_pkgs.append_column(&column_installed);
     tree_view_pkgs.append_column(&column_recommended);
-    tree_view_pkgs.append_column(&column_download_size);
     tree_view_pkgs.append_column(&column_description);
     tree_view_pkgs.set_visible(true);
     let scrollable_pkg = gtk::ScrolledWindow::new(None, None);
@@ -128,7 +126,7 @@ fn main() {
                 let pkgs = pkg_data.get(&selected).unwrap();
                 for (i, pkg) in pkgs.iter().enumerate() {
                     let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 4], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);
+                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);
                 }
             }
         }

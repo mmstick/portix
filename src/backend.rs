@@ -73,7 +73,25 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             .stdout
         ).expect("eix output is not UTF-8 compatible");
     let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()].split(' ').collect();
-    println!("{:?}", global_keywords);
+
+    // TODO: run in parallel
+    let arch_list = String::from_utf8(Command::new("sh")
+            .arg("-c")
+            .arg(r"cat $(portageq get_repo_path / gentoo)/profiles/arch.list")
+            .output()
+            .expect("failed to get eix output")
+            .stdout
+        ).expect("eix output is not UTF-8 compatible");
+    let arch_list = {
+        let mut list = Vec::new();
+        for arch in arch_list.lines() {
+            if arch.is_empty() {
+                break;
+            }
+            list.push(arch);
+        }
+        list
+    };
 
     let mut item = "this string is not empty for a reason";
     let mut desc = "";
@@ -99,37 +117,15 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                                     recommended_map.get(item).unwrap_or({
                                         let mut keyword = &"";
                                         for global_keyword in global_keywords.iter() {
-                                            if *global_keyword == "amd64" ||
-                                               *global_keyword == "x86" ||
-                                               *global_keyword == "arm" ||
-                                               *global_keyword == "arm64" ||
-                                               *global_keyword == "alpha" ||
-                                               *global_keyword == "hppa" ||
-                                               *global_keyword == "ia64" ||
-                                               *global_keyword == "m68k" ||
-                                               *global_keyword == "pcc" ||
-                                               *global_keyword == "pcc64" ||
-                                               *global_keyword == "s390" ||
-                                               *global_keyword == "sh" ||
-                                               *global_keyword == "sparc"
-                                            {
-                                                keyword = &"Not available";
-                                            }
-                                            else if *global_keyword == "~amd64" ||
-                                               *global_keyword == "~x86" ||
-                                               *global_keyword == "~arm" ||
-                                               *global_keyword == "~arm64" ||
-                                               *global_keyword == "~alpha" ||
-                                               *global_keyword == "~hppa" ||
-                                               *global_keyword == "~ia64" ||
-                                               *global_keyword == "~m68k" ||
-                                               *global_keyword == "~pcc" ||
-                                               *global_keyword == "~pcc64" ||
-                                               *global_keyword == "~s390" ||
-                                               *global_keyword == "~sh" ||
-                                               *global_keyword == "~sparc"
-                                            {
-                                                keyword = &"Keyworded";
+                                            for arch in arch_list.iter() {
+                                                if global_keyword == arch {
+                                                    keyword = &"Not available";
+                                                    break;
+                                                }
+                                                else if *global_keyword == &format!("~{}", arch) {
+                                                    keyword = &"Keyworded";
+                                                    break;
+                                                }
                                             }
                                         }
                                         keyword

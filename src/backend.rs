@@ -25,6 +25,126 @@ impl Data {
             installed_packages_map: BTreeMap::new(),
         }
     }
+
+    pub fn parse_pkg_data(&mut self) {
+        // TODO: run in parallel
+        let mut output = String::from_utf8(Command::new("sh")
+                .arg("-c")
+                .arg(r"NAMEVERSION='<category>/<name> <version> <description>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages")
+                .output()
+                .expect("failed to get eix output")
+                .stdout
+            ).expect("eix output is not UTF-8 compatible");
+
+        // TODO: run in parallel
+        let installed_version_output = String::from_utf8(Command::new("sh")
+                .arg("-c")
+                .arg(r"qlist -ICv|sed -re 's/-([0-9])/ \1/'")
+                .output()
+                .expect("failed to get qlist output")
+                .stdout
+            ).expect("qlist output is not UTF-8 compatible");
+        let installed_version_output_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
+            let item = &line[0..line.find(' ').unwrap()];
+            let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
+            (item, version)
+        }).collect();
+
+        // TODO: run in parallel
+        let recommended_version_output = String::from_utf8(Command::new("sh")
+                .arg("-c")
+                .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
+                .output()
+                .expect("failed to get eix output")
+                .stdout
+            ).expect("eix output is not UTF-8 compatible");
+        let recommended_version_output_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
+            let item = &line[0..line.find(' ').unwrap()];
+            let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
+            (item, version)
+        }).collect();
+
+        // TODO: run in parallel
+        let global_keywords = String::from_utf8(Command::new("sh")
+                .arg("-c")
+                .arg(r"emerge --info|grep ACCEPT_KEYWORDS")
+                .output()
+                .expect("failed to get emerge output")
+                .stdout
+            ).expect("emerge output is not UTF-8 compatible");
+        let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()].split(' ').collect();
+
+        // TODO: run in parallel
+        let arch_list = String::from_utf8(Command::new("sh")
+                .arg("-c")
+                .arg(r"cat $(portageq get_repo_path / gentoo)/profiles/arch.list")
+                .output()
+                .expect("failed to get portageq output")
+                .stdout
+            ).expect("portageq output is not UTF-8 compatible");
+        let arch_list = {
+            let mut list = Vec::new();
+            for arch in arch_list.lines() {
+                if arch.is_empty() {
+                    break;
+                }
+                list.push(arch);
+            }
+            list
+        };
+
+        let mut item = "this string is not empty for a reason";
+        let mut desc = "";
+        let mut versions: Vec<String> = Vec::new();
+        output.push_str("extra line needed to get previous item in iterator\n");
+        for line in output.lines() {
+            let current_item = &line[0..line.find(' ').unwrap()];
+            if current_item == item {
+                let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
+                let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
+                versions.push(version.to_string());
+            }
+            else {
+                if !versions.is_empty() {
+                    let (category, pkg) = {
+                        let mut item_split = item.split("/");
+                        (item_split.next().unwrap(), item_split.next().unwrap())
+                    };
+                    let installed_version = installed_version_output_map.get(item).unwrap_or(&"");
+                    let recommended_version = recommended_version_output_map.get(item).unwrap_or({
+                        let mut keyword = &"";
+                        for global_keyword in global_keywords.iter() {
+                            for arch in arch_list.iter() {
+                                if global_keyword == arch {
+                                    keyword = &"Not available";
+                                    break;
+                                }
+                                else if *global_keyword == &format!("~{}", arch) {
+                                    keyword = &"Keyworded";
+                                    break;
+                                }
+                            }
+                        }
+                        keyword
+                    });
+                    self.all_packages_map.entry(category.to_string())
+                                    .or_insert(BTreeSet::new())
+                                    .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
+                    if !installed_version.is_empty() {
+                        self.installed_packages_map.entry(category.to_string())
+                                              .or_insert(BTreeSet::new())
+                                              .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
+                    }
+                }
+                versions.clear();
+                item = &line[0..line.find(' ').unwrap()];
+                let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
+                let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
+                desc = &version_with_desc[(version_with_desc.find(' ').unwrap() + 1)..version_with_desc.len()];
+                versions.push(version.to_string());
+            }
+        }
+    }
 }
 
 impl Pkg {
@@ -57,128 +177,6 @@ impl PartialEq for Pkg {
     }
 }
 
-pub fn parse_data() -> Data {
-    let mut data = Data::new();
-
-    // TODO: run in parallel
-    let mut output = String::from_utf8(Command::new("sh")
-            .arg("-c")
-            .arg(r"NAMEVERSION='<category>/<name> <version> <description>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages")
-            .output()
-            .expect("failed to get eix output")
-            .stdout
-        ).expect("eix output is not UTF-8 compatible");
-
-    // TODO: run in parallel
-    let installed_version_output = String::from_utf8(Command::new("sh")
-            .arg("-c")
-            .arg(r"qlist -ICv|sed -re 's/-([0-9])/ \1/'")
-            .output()
-            .expect("failed to get qlist output")
-            .stdout
-        ).expect("qlist output is not UTF-8 compatible");
-    let installed_version_output_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
-        let item = &line[0..line.find(' ').unwrap()];
-        let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
-        (item, version)
-    }).collect();
-
-    // TODO: run in parallel
-    let recommended_version_output = String::from_utf8(Command::new("sh")
-            .arg("-c")
-            .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
-            .output()
-            .expect("failed to get eix output")
-            .stdout
-        ).expect("eix output is not UTF-8 compatible");
-    let recommended_version_output_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
-        let item = &line[0..line.find(' ').unwrap()];
-        let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
-        (item, version)
-    }).collect();
-
-    // TODO: run in parallel
-    let global_keywords = String::from_utf8(Command::new("sh")
-            .arg("-c")
-            .arg(r"emerge --info|grep ACCEPT_KEYWORDS")
-            .output()
-            .expect("failed to get emerge output")
-            .stdout
-        ).expect("emerge output is not UTF-8 compatible");
-    let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()].split(' ').collect();
-
-    // TODO: run in parallel
-    let arch_list = String::from_utf8(Command::new("sh")
-            .arg("-c")
-            .arg(r"cat $(portageq get_repo_path / gentoo)/profiles/arch.list")
-            .output()
-            .expect("failed to get portageq output")
-            .stdout
-        ).expect("portageq output is not UTF-8 compatible");
-    let arch_list = {
-        let mut list = Vec::new();
-        for arch in arch_list.lines() {
-            if arch.is_empty() {
-                break;
-            }
-            list.push(arch);
-        }
-        list
-    };
-
-    let mut item = "this string is not empty for a reason";
-    let mut desc = "";
-    let mut versions: Vec<String> = Vec::new();
-    output.push_str("extra line needed to get previous item in iterator\n");
-    for line in output.lines() {
-        let current_item = &line[0..line.find(' ').unwrap()];
-        if current_item == item {
-            let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
-            let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
-            versions.push(version.to_string());
-        }
-        else {
-            if !versions.is_empty() {
-                let (category, pkg) = {
-                    let mut item_split = item.split("/");
-                    (item_split.next().unwrap(), item_split.next().unwrap())
-                };
-                let installed_version = installed_version_output_map.get(item).unwrap_or(&"");
-                let recommended_version = recommended_version_output_map.get(item).unwrap_or({
-                    let mut keyword = &"";
-                    for global_keyword in global_keywords.iter() {
-                        for arch in arch_list.iter() {
-                            if global_keyword == arch {
-                                keyword = &"Not available";
-                                break;
-                            }
-                            else if *global_keyword == &format!("~{}", arch) {
-                                keyword = &"Keyworded";
-                                break;
-                            }
-                        }
-                    }
-                    keyword
-                });
-                data.all_packages_map.entry(category.to_string())
-                                .or_insert(BTreeSet::new())
-                                .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
-                if !installed_version.is_empty() {
-                    data.installed_packages_map.entry(category.to_string())
-                                          .or_insert(BTreeSet::new())
-                                          .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
-                }
-            }
-            versions.clear();
-            item = &line[0..line.find(' ').unwrap()];
-            let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
-            let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
-            desc = &version_with_desc[(version_with_desc.find(' ').unwrap() + 1)..version_with_desc.len()];
-            versions.push(version.to_string());
-        }
-    }
-    data
-}
 
 #[allow(dead_code)]
 pub fn parse_data_with_portageq(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {

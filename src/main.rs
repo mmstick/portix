@@ -55,7 +55,8 @@ fn main() {
     let column_category = make_tree_view_column("Categories", 0);
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
-    let pkg_data = backend::parse_data();
+    let mut pkg_data = backend::Data::new();
+    pkg_data.parse_pkg_data();
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     for (category, pkgs) in pkg_data.all_packages_map.iter() {

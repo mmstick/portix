@@ -15,7 +15,7 @@ impl Pkg {
     pub fn new(name: &str, versions: Vec<String>, recommened_version: &str, desc: &str) -> Pkg {
         Pkg {
             name: name.to_string(),
-            versions: Vec::new(),
+            versions: versions,
             recommended_version: recommened_version.to_string(),
             desc: desc.to_string()
         }

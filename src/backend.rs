@@ -7,15 +7,17 @@ use std::fs;
 pub struct Pkg {
     pub name: String,
     pub versions: Vec<String>,
+    pub installed_version: String,
     pub recommended_version: String,
     pub desc: String,
 }
 
 impl Pkg {
-    pub fn new(name: &str, versions: Vec<String>, recommened_version: &str, desc: &str) -> Pkg {
+    pub fn new(name: &str, versions: Vec<String>, installed_version: &str, recommened_version: &str, desc: &str) -> Pkg {
         Pkg {
             name: name.to_string(),
             versions: versions,
+            installed_version: installed_version.to_string(),
             recommended_version: recommened_version.to_string(),
             desc: desc.to_string()
         }
@@ -51,14 +53,28 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
         ).expect("eix output is not UTF-8 compatible");
 
     // TODO: run in parallel
-    let recommened_version_output = String::from_utf8(Command::new("sh")
+    let recommended_version_output = String::from_utf8(Command::new("sh")
             .arg("-c")
             .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
             .output()
             .expect("failed to get eix output")
             .stdout
         ).expect("eix output is not UTF-8 compatible");
-    let recommended_map: HashMap<_, _> = recommened_version_output.lines().map(|line| {
+    let recommended_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
+        let item = &line[0..line.find(' ').unwrap()];
+        let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
+        (item, version)
+    }).collect();
+
+    // TODO: run in parallel
+    let installed_version_output = String::from_utf8(Command::new("sh")
+            .arg("-c")
+            .arg(r"qlist -ICv|sed -re 's/-([0-9])/ \1/'")
+            .output()
+            .expect("failed to get eix output")
+            .stdout
+        ).expect("eix output is not UTF-8 compatible");
+    let installed_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
         let item = &line[0..line.find(' ').unwrap()];
         let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
         (item, version)
@@ -113,7 +129,9 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                 //println!("{:?} from {:?} as {:?} with {:?}", category, pkg, versions, desc);
                 map.entry(category.to_string())
                    .or_insert(BTreeSet::new())
-                   .insert(Pkg::new(pkg, versions.clone(),
+                   .insert(Pkg::new(pkg,
+                                    versions.clone(),
+                                    installed_map.get(item).unwrap_or(&""),
                                     recommended_map.get(item).unwrap_or({
                                         let mut keyword = &"";
                                         for global_keyword in global_keywords.iter() {
@@ -129,7 +147,8 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                                             }
                                         }
                                         keyword
-                                    }), desc));
+                                    }),
+                                    desc));
             }
             versions.clear();
             item = &line[0..line.find(' ').unwrap()];

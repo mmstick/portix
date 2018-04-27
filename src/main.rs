@@ -128,7 +128,7 @@ fn main() {
                 let pkgs = pkg_data.get(&selected).unwrap();
                 for (i, pkg) in pkgs.iter().enumerate() {
                     let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                    model_pkg_list.set(&tree_iter_pkgs, &[0, 2, 4], &[&pkg.name, &pkg.recommended_version, &pkg.desc]);
+                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 4], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);
                 }
             }
         }

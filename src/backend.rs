@@ -35,7 +35,7 @@ impl PartialEq for Pkg {
 }
 
 pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
-    let output = String::from_utf8(Command::new("sh")
+    let mut output = String::from_utf8(Command::new("sh")
             .arg("-c")
             .arg(r"NAMEVERSION='<category>/<name> <version> <description>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages")
             .output()
@@ -46,10 +46,8 @@ pub fn parse_data_with_eix(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
     let mut item = "this string is not empty for a reason";
     let mut desc = "";
     let mut versions: Vec<String> = Vec::new();
-    let mut lines: Vec<_> = output.lines().collect();
-    lines.push("extra line needed to get last item");
-    for line in lines.iter() {
-        println!("{:?}", line);
+    output.push_str("extra line needed to get previous item in iterator\n");
+    for line in output.lines() {
         let current_item = &line[0..line.find(' ').unwrap()];
         if current_item == item {
             let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];

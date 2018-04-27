@@ -2,7 +2,6 @@
 extern crate gtk;
 
 use gtk::prelude::*;
-
 use gtk::{Window, WindowType};
 
 mod backend;
@@ -11,6 +10,9 @@ fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
+    let mut pkg_data = backend::Data::new();
+    pkg_data.parse_pkg_data();
+    pkg_data.parse_sets_data();
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -55,8 +57,6 @@ fn main() {
     let column_category = make_tree_view_column("Categories", 0);
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
-    let mut pkg_data = backend::Data::new();
-    pkg_data.parse_pkg_data();
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     for (category, pkgs) in pkg_data.all_packages_map.iter() {
@@ -131,8 +131,7 @@ fn main() {
                 }
             }
             else if entry == "Sets" {
-                pkg_data_clone.parse_sets_data();
-                for (set, pkgs) in pkg_data_clone.portage_sets_data.borrow().iter() {
+                for (set, pkgs) in pkg_data_clone.portage_sets_data.iter() {
                     model_category.insert_with_values(None, &[0, 1], &[&set, &(pkgs.len() as u64)]);
                 }
             }
@@ -155,11 +154,7 @@ fn main() {
                     pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)
                 }
                 else if entry == "Sets" {
-                    pkg_data.parse_sets_data();
-                    // Alright, this time I disagree with the borrow checker, hope this doesn't segfault
-                    unsafe {
-                    (*pkg_data.portage_sets_data.as_ptr()).get(&selected).unwrap_or(&blank_set)
-                    }
+                    pkg_data.portage_sets_data.get(&selected).unwrap_or(&blank_set)
                 }
                 else {
                     pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)

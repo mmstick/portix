@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::cell;
+use std::thread;
 use std::collections::{HashMap, BTreeMap, BTreeSet};
 use std::fs;
 
@@ -20,7 +20,7 @@ pub struct Data {
     // String == category
     pub installed_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
     // String == set name
-    pub portage_sets_data: cell::RefCell<BTreeMap<String, BTreeSet<Pkg>>>,
+    pub portage_sets_data: BTreeMap<String, BTreeSet<Pkg>>,
 }
 
 impl Data {
@@ -28,82 +28,99 @@ impl Data {
         Data {
             all_packages_map: BTreeMap::new(),
             installed_packages_map: BTreeMap::new(),
-            portage_sets_data: cell::RefCell::new(BTreeMap::new()),
+            portage_sets_data: BTreeMap::new(),
         }
     }
 
     pub fn parse_pkg_data(&mut self) {
-        // TODO: run in parallel
-        let mut output = String::from_utf8(Command::new("sh")
-                .arg("-c")
-                .arg(r"NAMEVERSION='<category>/<name> <version> <description>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages")
-                .output()
-                .expect("failed to get eix output")
-                .stdout
-            ).expect("eix output is not UTF-8 compatible");
+        let child_output = thread::spawn(move || {
+            String::from_utf8(Command::new("sh")
+                    .arg("-c")
+                    .arg(r"NAMEVERSION='<category>/<name> <version> <description>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<availableversions:NAMEVERSION>' --pure-packages")
+                    .output()
+                    .expect("failed to get eix output")
+                    .stdout
+                ).expect("eix output is not UTF-8 compatible")
+        });
 
-        // TODO: run in parallel
-        let installed_version_output = String::from_utf8(Command::new("sh")
-                .arg("-c")
-                .arg(r"qlist -ICv|sed -re 's/-([0-9])/ \1/'")
-                .output()
-                .expect("failed to get qlist output")
-                .stdout
-            ).expect("qlist output is not UTF-8 compatible");
-        let installed_version_output_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
-            let item = &line[0..line.find(' ').unwrap()];
-            let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
-            (item, version)
-        }).collect();
+        let child_installed_version_output = thread::spawn(move || {
+            let installed_version_output = String::from_utf8(Command::new("sh")
+                    .arg("-c")
+                    .arg(r"qlist -ICv|sed -re 's/-([0-9])/ \1/'")
+                    .output()
+                    .expect("failed to get qlist output")
+                    .stdout
+                ).expect("qlist output is not UTF-8 compatible");
+            let installed_version_output_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
+                let item = &line[0..line.find(' ').unwrap()];
+                let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
+                (item.to_string(), version.to_string())
+            }).collect();
+            installed_version_output_map
+        });
 
-        // TODO: run in parallel
-        let recommended_version_output = String::from_utf8(Command::new("sh")
-                .arg("-c")
-                .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
-                .output()
-                .expect("failed to get eix output")
-                .stdout
-            ).expect("eix output is not UTF-8 compatible");
-        let recommended_version_output_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
-            let item = &line[0..line.find(' ').unwrap()];
-            let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
-            (item, version)
-        }).collect();
+        let child_recommended_version_output = thread::spawn(move || {
+            let recommended_version_output = String::from_utf8(Command::new("sh")
+                    .arg("-c")
+                    .arg(r"NAMEVERSION='<category>/<name> <version>\n' EIX_LIMIT_COMPACT=0 eix -c --format '<bestversion:NAMEVERSION>' --pure-packages")
+                    .output()
+                    .expect("failed to get eix output")
+                    .stdout
+                ).expect("eix output is not UTF-8 compatible");
+            let recommended_version_output_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
+                let item = &line[0..line.find(' ').unwrap()];
+                let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
+                (item.to_string(), version.to_string())
+            }).collect();
+            recommended_version_output_map
+        });
 
-        // TODO: run in parallel
-        let global_keywords = String::from_utf8(Command::new("sh")
-                .arg("-c")
-                .arg(r"emerge --info|grep ACCEPT_KEYWORDS")
-                .output()
-                .expect("failed to get emerge output")
-                .stdout
-            ).expect("emerge output is not UTF-8 compatible");
-        let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()].split(' ').collect();
+        let child_global_keywords = thread::spawn(move || {
+            let global_keywords = String::from_utf8(Command::new("sh")
+                    .arg("-c")
+                    .arg(r"emerge --info|grep ACCEPT_KEYWORDS")
+                    .output()
+                    .expect("failed to get emerge output")
+                    .stdout
+                ).expect("emerge output is not UTF-8 compatible");
+            let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()]
+                .split(' ').map(|s| s.to_string()).collect();
+            global_keywords
+        });
 
-        // TODO: run in parallel
-        let arch_list = String::from_utf8(Command::new("sh")
-                .arg("-c")
-                .arg(r"cat $(portageq get_repo_path / gentoo)/profiles/arch.list")
-                .output()
-                .expect("failed to get portageq output")
-                .stdout
-            ).expect("portageq output is not UTF-8 compatible");
-        let arch_list = {
-            let mut list = Vec::new();
-            for arch in arch_list.lines() {
-                if arch.is_empty() {
-                    break;
+
+        let child_arch_list = thread::spawn(move || {
+            let arch_list = String::from_utf8(Command::new("sh")
+                    .arg("-c")
+                    .arg(r"cat $(portageq get_repo_path / gentoo)/profiles/arch.list")
+                    .output()
+                    .expect("failed to get portageq output")
+                    .stdout
+                ).expect("portageq output is not UTF-8 compatible");
+            let arch_list = {
+                let mut list = Vec::new();
+                for arch in arch_list.lines() {
+                    if arch.is_empty() {
+                        break;
+                    }
+                    list.push(arch.to_string());
                 }
-                list.push(arch);
-            }
-            list
-        };
+                list
+            };
+            arch_list
+        });
 
-        let mut item = "this string is not empty for a reason";
-        let mut desc = "";
+
+        let mut item = "".to_string();
+        let mut desc = "".to_string();
         let mut versions: Vec<String> = Vec::new();
+        let mut output = child_output.join().unwrap();
         output.push_str("extra line needed to get previous item in iterator\n");
-        for line in output.lines() {
+        let installed_version_output_map = child_installed_version_output.join().unwrap();
+        let recommended_version_output_map = child_recommended_version_output.join().unwrap();
+        let global_keywords = child_global_keywords.join().unwrap();
+        let arch_list = child_arch_list.join().unwrap();
+        for line in output.lines().map(|line| line.to_string()) {
             let current_item = &line[0..line.find(' ').unwrap()];
             if current_item == item {
                 let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
@@ -116,43 +133,44 @@ impl Data {
                         let mut item_split = item.split("/");
                         (item_split.next().unwrap(), item_split.next().unwrap())
                     };
-                    let installed_version = installed_version_output_map.get(item).unwrap_or(&"");
-                    let recommended_version = recommended_version_output_map.get(item).unwrap_or({
-                        let mut keyword = &"";
+                    let blank = "".to_string();
+                    let installed_version = installed_version_output_map.get(&item).unwrap_or(&blank);
+                    let mut keyword = "".to_string();
+                    let recommended_version = recommended_version_output_map.get(&item).unwrap_or({
                         for global_keyword in global_keywords.iter() {
                             for arch in arch_list.iter() {
                                 if global_keyword == arch {
-                                    keyword = &"Not available";
+                                    keyword = "Not available".to_string();
                                     break;
                                 }
-                                else if *global_keyword == &format!("~{}", arch) {
-                                    keyword = &"Keyworded";
+                                else if *global_keyword == format!("~{}", arch) {
+                                    keyword = "Keyworded".to_string();
                                     break;
                                 }
                             }
                         }
-                        keyword
+                        &keyword
                     });
                     self.all_packages_map.entry(category.to_string())
                                     .or_insert(BTreeSet::new())
-                                    .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
+                                    .insert(Pkg::new(&pkg, versions.clone(), &installed_version, &recommended_version, &desc));
                     if !installed_version.is_empty() {
                         self.installed_packages_map.entry(category.to_string())
                                               .or_insert(BTreeSet::new())
-                                              .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, desc));
+                                              .insert(Pkg::new(&pkg, versions.clone(), &installed_version, &recommended_version, &desc));
                     }
                 }
                 versions.clear();
-                item = &line[0..line.find(' ').unwrap()];
+                item = line[0..line.find(' ').unwrap()].to_string();
                 let version_with_desc = &line[(line.find(' ').unwrap() + 1)..line.len()];
                 let version = &version_with_desc[0..version_with_desc.find(' ').unwrap()];
-                desc = &version_with_desc[(version_with_desc.find(' ').unwrap() + 1)..version_with_desc.len()];
+                desc = version_with_desc[(version_with_desc.find(' ').unwrap() + 1)..version_with_desc.len()].to_string();
                 versions.push(version.to_string());
             }
         }
     }
 
-    pub fn parse_sets_data(&self) {
+    pub fn parse_sets_data(&mut self) {
         for set in fs::read_dir("/etc/portage/sets").expect("failed to find /etc/portage/sets directory") {
             let set = set.expect("intermittent IO error");
             let set_name = set.file_name().into_string().unwrap();
@@ -168,8 +186,7 @@ impl Data {
                     if all_pkg.name == pkg {
                         let mut all_pkg_clone = all_pkg.clone();
                         all_pkg_clone.name = line.to_string();
-                        self.portage_sets_data.borrow_mut()
-                                              .entry(set_name.clone())
+                        self.portage_sets_data.entry(set_name.clone())
                                               .or_insert(BTreeSet::new())
                                               .insert(all_pkg_clone);
                         break;

@@ -153,11 +153,11 @@ impl Data {
                     });
                     self.all_packages_map.entry(category.to_string())
                                     .or_insert(BTreeSet::new())
-                                    .insert(Pkg::new(&pkg, versions.clone(), &installed_version, &recommended_version, &desc));
+                                    .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, &desc));
                     if !installed_version.is_empty() {
                         self.installed_packages_map.entry(category.to_string())
                                               .or_insert(BTreeSet::new())
-                                              .insert(Pkg::new(&pkg, versions.clone(), &installed_version, &recommended_version, &desc));
+                                              .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, &desc));
                     }
                 }
                 versions.clear();
@@ -198,13 +198,13 @@ impl Data {
 }
 
 impl Pkg {
-    pub fn new(name: &str, versions: Vec<String>, installed_version: &str, recommended_version: &str, desc: &str) -> Self {
+    pub fn new<S: Into<String>>(name: S, versions: Vec<String>, installed_version: S, recommended_version: S, desc: S) -> Self {
         Pkg {
-            name: name.to_string(),
+            name: name.into(),
             versions: versions,
-            installed_version: installed_version.to_string(),
-            recommended_version: recommended_version.to_string(),
-            desc: desc.to_string()
+            installed_version: installed_version.into(),
+            recommended_version: recommended_version.into(),
+            desc: desc.into()
         }
     }
 }

@@ -19,14 +19,24 @@ fn main() {
     menubar.append(&gtk::MenuItem::new_with_label(&"Settings"));
     menubar.append(&gtk::MenuItem::new_with_label(&"Help"));
 
+    let toolbutton1 = gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Emerge");
+    toolbutton1.set_sensitive(false);
+    let toolbutton2 = gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Advance Emerge");
+    toolbutton2.set_sensitive(false);
+    let toolbutton3 = gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Unmerge");
+    toolbutton3.set_sensitive(false);
+    let separator = gtk::SeparatorToolItem::new();
+    let toolbutton4 = gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Sync");
+    let toolbutton5 = gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Upgrade");
+    let toolbutton6 = gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Queue");
     let toolbar = gtk::Toolbar::new();
-    toolbar.insert(&gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Emerge"), 0);
-    toolbar.insert(&gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Advance Emerge"), 1);
-    toolbar.insert(&gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Unmerge"), 2);
-    toolbar.insert(&gtk::SeparatorToolItem::new(), 3);
-    toolbar.insert(&gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Sync"), 4);
-    toolbar.insert(&gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Upgrade"), 5);
-    toolbar.insert(&gtk::ToolButton::new::<gtk::Widget, _, _>(None, "Queue"), 6);
+    toolbar.insert(&toolbutton1, 0);
+    toolbar.insert(&toolbutton2, 1);
+    toolbar.insert(&toolbutton3, 2);
+    toolbar.insert(&separator, 3);
+    toolbar.insert(&toolbutton4, 4);
+    toolbar.insert(&toolbutton5, 5);
+    toolbar.insert(&toolbutton6, 6);
 
     let combo_box = gtk::ComboBoxText::new();
     let combo_box_labels = ["All Packages", "Installed Packages", "Search Results", "Upgradeable Packages", "Deprecated Packages", "Sets"];

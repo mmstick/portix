@@ -21,24 +21,24 @@ fn main() {
     menubar.append(&gtk::MenuItem::new_with_label(&"Settings"));
     menubar.append(&gtk::MenuItem::new_with_label(&"Help"));
 
-    let toolbutton1 = gtk::ToolButton::new(&gtk::Image::new_from_icon_name("list-add", 100), "Emerge");
-    toolbutton1.set_sensitive(false);
-    let toolbutton2 = gtk::ToolButton::new(&gtk::Image::new_from_icon_name("emblem-system", 100), "Advance Emerge");
-    toolbutton2.set_sensitive(false);
-    let toolbutton3 = gtk::ToolButton::new(&gtk::Image::new_from_icon_name("list-remove", 100), "Unmerge");
-    toolbutton3.set_sensitive(false);
+    let toolbuttons: Vec<_> = {
+        let icon_names_and_labels = [("list-add", "Emerge"), ("emblem-system", "Advance Emerge"), ("list-remove", "Unmerge"), ("view-refresh", "Sync"), ("media-seek-forward", "Upgrade"), ("media-playback-start", "Queue")];
+        icon_names_and_labels.iter().map(|(icon, label)| {
+            gtk::ToolButton::new(&gtk::Image::new_from_icon_name(*icon, 100), *label)
+        }).collect()
+    };
     let separator = gtk::SeparatorToolItem::new();
-    let toolbutton4 = gtk::ToolButton::new(&gtk::Image::new_from_icon_name("view-refresh", 100), "Sync");
-    let toolbutton5 = gtk::ToolButton::new(&gtk::Image::new_from_icon_name("media-seek-forward", 100), "Upgrade");
-    let toolbutton6 = gtk::ToolButton::new(&gtk::Image::new_from_icon_name("media-playback-start", 100), "Queue");
+    toolbuttons[0].set_sensitive(false);
+    toolbuttons[1].set_sensitive(false);
+    toolbuttons[2].set_sensitive(false);
     let toolbar = gtk::Toolbar::new();
-    toolbar.insert(&toolbutton1, 0);
-    toolbar.insert(&toolbutton2, 1);
-    toolbar.insert(&toolbutton3, 2);
+    toolbar.insert(&toolbuttons[0], 0);
+    toolbar.insert(&toolbuttons[1], 1);
+    toolbar.insert(&toolbuttons[2], 2);
     toolbar.insert(&separator, 3);
-    toolbar.insert(&toolbutton4, 4);
-    toolbar.insert(&toolbutton5, 5);
-    toolbar.insert(&toolbutton6, 6);
+    toolbar.insert(&toolbuttons[3], 4);
+    toolbar.insert(&toolbuttons[4], 5);
+    toolbar.insert(&toolbuttons[5], 6);
     toolbar.set_property_toolbar_style(gtk::ToolbarStyle::Both);
 
     let combo_box = gtk::ComboBoxText::new();

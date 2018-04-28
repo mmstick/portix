@@ -23,8 +23,8 @@ fn main() {
 
     let toolbuttons: Vec<_> = {
         let icon_names_and_labels = [("list-add", "Emerge"), ("emblem-system", "Advance Emerge"), ("list-remove", "Unmerge"), ("view-refresh", "Sync"), ("media-seek-forward", "Upgrade"), ("media-playback-start", "Queue")];
-        icon_names_and_labels.iter().map(|(icon, label)| {
-            gtk::ToolButton::new(&gtk::Image::new_from_icon_name(*icon, 100), *label)
+        icon_names_and_labels.iter().map(|&(icon, label)| {
+            gtk::ToolButton::new(&gtk::Image::new_from_icon_name(icon, 100), label)
         }).collect()
     };
     let separator = gtk::SeparatorToolItem::new();

@@ -4,17 +4,15 @@ extern crate gtk;
 use gtk::prelude::*;
 use gtk::{Window, WindowType};
 
-//use std::thread;
-
 mod backend;
 
 fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
-    let mut pkg_data = backend::Data::new();
-    pkg_data.parse_pkg_data();
-    pkg_data.parse_sets_data();
+    let mut data = backend::Data::new();
+    data.parse_pkg_data();
+    data.parse_sets_data();
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -72,7 +70,7 @@ fn main() {
 
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
-    for (category, pkgs) in pkg_data.all_packages_map.iter() {
+    for (category, pkgs) in data.all_packages_map.iter() {
         model_category.insert_with_values(None, &[0,1], &[&category, &(pkgs.len() as u64)]);
     }
 
@@ -130,22 +128,22 @@ fn main() {
     window.add(&vbox);
     window.show_all();
 
-    let pkg_data_clone = pkg_data.clone();
+    let data_clone = data.clone();
     combo_box.connect_changed(move |combo_box| {
         if let Some(entry) = combo_box.get_active_text() {
             model_category.clear();
             if entry == "Installed Packages" {
-                for (category, pkgs) in pkg_data_clone.installed_packages_map.iter() {
+                for (category, pkgs) in data_clone.installed_packages_map.iter() {
                     model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
                 }
             }
             else if entry == "All Packages" {
-                for (category, pkgs) in pkg_data_clone.all_packages_map.iter() {
+                for (category, pkgs) in data_clone.all_packages_map.iter() {
                     model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
                 }
             }
             else if entry == "Sets" {
-                for (set, pkgs) in pkg_data_clone.portage_sets_data.iter() {
+                for (set, pkgs) in data_clone.portage_sets_map.iter() {
                     model_category.insert_with_values(None, &[0, 1], &[&set, &(pkgs.len() as u64)]);
                 }
             }
@@ -160,18 +158,18 @@ fn main() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
                 let mut blank_set = std::collections::BTreeSet::new();
-                let mut pkgs = if entry == "Installed Packages"{
+                let pkgs = if entry == "Installed Packages"{
                     //println!("{:?}", selected);
-                    pkg_data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
+                    data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
                 }
                 else if entry == "All Packages" {
-                    pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)
+                    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
                 }
                 else if entry == "Sets" {
-                    pkg_data.portage_sets_data.get(&selected).unwrap_or(&blank_set)
+                    data.portage_sets_map.get(&selected).unwrap_or(&blank_set)
                 }
                 else {
-                    pkg_data.all_packages_map.get(&selected).unwrap_or(&blank_set)
+                    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
                 };
                 for (i, pkg) in pkgs.iter().enumerate() {
                     let tree_iter_pkgs = model_pkg_list.insert(i as i32);

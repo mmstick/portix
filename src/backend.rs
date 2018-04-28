@@ -20,7 +20,7 @@ pub struct Data {
     // String == category
     pub installed_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
     // String == set name
-    pub portage_sets_data: BTreeMap<String, BTreeSet<Pkg>>,
+    pub portage_sets_map: BTreeMap<String, BTreeSet<Pkg>>,
 }
 
 impl Data {
@@ -28,7 +28,7 @@ impl Data {
         Data {
             all_packages_map: BTreeMap::new(),
             installed_packages_map: BTreeMap::new(),
-            portage_sets_data: BTreeMap::new(),
+            portage_sets_map: BTreeMap::new(),
         }
     }
 
@@ -105,8 +105,8 @@ impl Data {
         });
 
 
-        let mut item = "".to_string();
-        let mut desc = "".to_string();
+        let mut item = String::new();
+        let mut desc = String::new();
         let mut versions: Vec<String> = Vec::new();
         let mut output = child_output.join().unwrap();
         output.push_str("extra line needed to get previous item in iterator\n");
@@ -127,9 +127,9 @@ impl Data {
                         let mut item_split = item.split("/");
                         (item_split.next().unwrap(), item_split.next().unwrap())
                     };
-                    let blank = "".to_string();
+                    let blank = String::new();
                     let installed_version = installed_version_output_map.get(&item).unwrap_or(&blank);
-                    let mut keyword = "".to_string();
+                    let mut keyword = String::new();
                     let recommended_version = recommended_version_output_map.get(&item).unwrap_or({
                         for global_keyword in global_keywords.iter() {
                             for arch in arch_list.iter() {
@@ -180,7 +180,7 @@ impl Data {
                     if all_pkg.name == pkg {
                         let mut all_pkg_clone = all_pkg.clone();
                         all_pkg_clone.name = line.to_string();
-                        self.portage_sets_data.entry(set_name.clone())
+                        self.portage_sets_map.entry(set_name.clone())
                                               .or_insert(BTreeSet::new())
                                               .insert(all_pkg_clone);
                         break;

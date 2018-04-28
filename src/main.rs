@@ -11,8 +11,8 @@ fn main() {
         println!("failed to initialize GTK.");
     }
     let mut data = backend::Data::new();
-    data.parse_pkg_data();
-    data.parse_sets_data();
+    data.parse_for_pkgs();
+    data.parse_for_sets();
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -178,6 +178,15 @@ fn main() {
             }
         }
     });
+
+    //tree_view_pkgs.get_selection().connect_changed(move |selected_pkg| {
+    //    selected_pkg.set_mode(gtk::SelectionMode::Single);
+
+    //    if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
+    //        if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
+    //        }
+    //    }
+    //});
 
     window.connect_delete_event(|_, _| {
         gtk::main_quit();

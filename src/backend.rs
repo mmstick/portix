@@ -13,6 +13,36 @@ pub struct Pkg {
     pub desc: String,
 }
 
+impl Pkg {
+    pub fn new<S: Into<String>>(name: S, versions: Vec<String>, installed_version: S, recommended_version: S, desc: S) -> Self {
+        Pkg {
+            name: name.into(),
+            versions: versions,
+            installed_version: installed_version.into(),
+            recommended_version: recommended_version.into(),
+            desc: desc.into()
+        }
+    }
+}
+
+impl Ord for Pkg {
+    fn cmp(&self, other: &Pkg) -> ::std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for Pkg {
+    fn partial_cmp(&self, other: &Pkg) -> Option<::std::cmp::Ordering> {
+        Some(self.name.cmp(&other.name))
+    }
+}
+
+impl PartialEq for Pkg {
+    fn eq(&self, other: &Pkg) -> bool {
+        self.name == other.name
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Data {
     // String == category
@@ -32,7 +62,7 @@ impl Data {
         }
     }
 
-    pub fn parse_pkg_data(&mut self) {
+    pub fn parse_for_pkgs(&mut self) {
         let child_output = thread::spawn(move || {
             String::from_utf8(Command::new("sh")
                     .arg("-c")
@@ -164,7 +194,7 @@ impl Data {
         }
     }
 
-    pub fn parse_sets_data(&mut self) {
+    pub fn parse_for_sets(&mut self) {
         for set in fs::read_dir("/etc/portage/sets").expect("failed to find /etc/portage/sets directory") {
             let set = set.expect("intermittent IO error");
             let set_name = set.file_name().into_string().unwrap();
@@ -191,39 +221,8 @@ impl Data {
     }
 }
 
-impl Pkg {
-    pub fn new<S: Into<String>>(name: S, versions: Vec<String>, installed_version: S, recommended_version: S, desc: S) -> Self {
-        Pkg {
-            name: name.into(),
-            versions: versions,
-            installed_version: installed_version.into(),
-            recommended_version: recommended_version.into(),
-            desc: desc.into()
-        }
-    }
-}
-
-impl Ord for Pkg {
-    fn cmp(&self, other: &Pkg) -> ::std::cmp::Ordering {
-        self.name.cmp(&other.name)
-    }
-}
-
-impl PartialOrd for Pkg {
-    fn partial_cmp(&self, other: &Pkg) -> Option<::std::cmp::Ordering> {
-        Some(self.name.cmp(&other.name))
-    }
-}
-
-impl PartialEq for Pkg {
-    fn eq(&self, other: &Pkg) -> bool {
-        self.name == other.name
-    }
-}
-
-
 #[allow(dead_code)]
-pub fn parse_data_with_portageq(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
+pub fn parse_data_with_portageq() {
     let repos = String::from_utf8(Command::new("sh")
             .arg("-c")
             .arg("portageq get_repos /")
@@ -249,7 +248,6 @@ pub fn parse_data_with_portageq(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
             if category_dir.path().is_file() || category.starts_with(".") {
                 continue;
             }
-            map.entry(category.clone()).or_insert(BTreeSet::new());
 
             let package_dirs = match fs::read_dir(category_dir.path()) {
                     Ok(a) => a,
@@ -261,7 +259,6 @@ pub fn parse_data_with_portageq(map: &mut BTreeMap<String, BTreeSet<Pkg>>) {
                 if package_dir.path().is_file() || package.starts_with(".") {
                     continue;
                 }
-                //map.get_mut(&category).unwrap().insert(Pkg::new(&package));
             }
         }
     }

@@ -4,6 +4,8 @@ extern crate gtk;
 use gtk::prelude::*;
 use gtk::{Window, WindowType};
 
+//use std::thread;
+
 mod backend;
 
 fn main() {
@@ -79,6 +81,7 @@ fn main() {
     tree_view_category.set_visible(true);
     let scrollable_category = gtk::ScrolledWindow::new(None, None);
     scrollable_category.add(&tree_view_category);
+    scrollable_category.set_size_request(300, 400);
 
     let column_packages = make_tree_view_column("Packages", 0);
     let column_installed = make_tree_view_column("Installed", 1);

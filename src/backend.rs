@@ -51,12 +51,11 @@ impl Data {
                     .expect("failed to get qlist output")
                     .stdout
                 ).expect("qlist output is not UTF-8 compatible");
-            let installed_version_output_map: HashMap<_, _> = installed_version_output.lines().map(|line| {
+            installed_version_output.lines().map(|line| {
                 let item = &line[0..line.find(' ').unwrap()];
                 let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
                 (item.to_string(), version.to_string())
-            }).collect();
-            installed_version_output_map
+            }).collect::<HashMap<_, _>>()
         });
 
         let child_recommended_version_output = thread::spawn(move || {
@@ -67,12 +66,11 @@ impl Data {
                     .expect("failed to get eix output")
                     .stdout
                 ).expect("eix output is not UTF-8 compatible");
-            let recommended_version_output_map: HashMap<_, _> = recommended_version_output.lines().map(|line| {
+            recommended_version_output.lines().map(|line| {
                 let item = &line[0..line.find(' ').unwrap()];
                 let version = &line[(line.find(' ').unwrap() + 1)..line.len()];
                 (item.to_string(), version.to_string())
-            }).collect();
-            recommended_version_output_map
+            }).collect::<HashMap<_, _>>()
         });
 
         let child_global_keywords = thread::spawn(move || {
@@ -83,9 +81,8 @@ impl Data {
                     .expect("failed to get emerge output")
                     .stdout
                 ).expect("emerge output is not UTF-8 compatible");
-            let global_keywords: Vec<_> = global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()]
-                .split(' ').map(|s| s.to_string()).collect();
-            global_keywords
+            global_keywords[(global_keywords.find("\"").unwrap() + 1)..global_keywords.rfind("\"").unwrap()]
+                .split(' ').map(|s| s.to_string()).collect::<Vec<_>>()
         });
 
 
@@ -97,17 +94,14 @@ impl Data {
                     .expect("failed to get portageq output")
                     .stdout
                 ).expect("portageq output is not UTF-8 compatible");
-            let arch_list = {
-                let mut list = Vec::new();
-                for arch in arch_list.lines() {
-                    if arch.is_empty() {
-                        break;
-                    }
-                    list.push(arch.to_string());
+            let mut list = Vec::new();
+            for arch in arch_list.lines() {
+                if arch.is_empty() {
+                    break;
                 }
-                list
-            };
-            arch_list
+                list.push(arch.to_string());
+            }
+            list
         });
 
 

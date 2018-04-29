@@ -1,8 +1,13 @@
 #![feature(pattern_parentheses)]
 extern crate gtk;
+extern crate rusqlite;
+
+use backend::PortixConnection;
 
 use gtk::prelude::*;
 use gtk::{Window, WindowType};
+
+use rusqlite::Connection;
 
 mod backend;
 
@@ -10,9 +15,9 @@ fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
-    let mut data = backend::Data::new();
-    data.parse_for_pkgs();
-    data.parse_for_sets();
+    let conn = Connection::open_in_memory().unwrap();
+    conn.parse_for_pkgs();
+    conn.parse_for_sets();
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -69,9 +74,13 @@ fn main() {
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
 
-    let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
-    for (category, pkgs) in data.all_packages_map.iter() {
-        model_category.insert_with_values(None, &[0,1], &[&category, &(pkgs.len() as u64)]);
+    //let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
+    //for (category, pkgs) in data.all_packages_map.iter() {
+    //}
+    let statement = self.prepare("SELECT category, package, versions, installed_version, recommended_version, description FROM all_packages").expect("sql cannot be converted to a C string");
+    let mut rows = statement.query(&[]).expect("failed to query database");
+    while let Some(Ok(row)) = rows.next() {
+        model_category.insert_with_values(None, &[0,1], &[&row.get(0), &(pkgs.len() as u64)]);
     }
 
     let tree_view_category = gtk::TreeView::new_with_model(&model_category);
@@ -128,25 +137,25 @@ fn main() {
     window.add(&vbox);
     window.show_all();
 
-    let data_clone = data.clone();
+    //let data_clone = data.clone();
     combo_box.connect_changed(move |combo_box| {
         if let Some(entry) = combo_box.get_active_text() {
             model_category.clear();
-            if entry == "Installed Packages" {
-                for (category, pkgs) in data_clone.installed_packages_map.iter() {
-                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
-                }
-            }
-            else if entry == "All Packages" {
-                for (category, pkgs) in data_clone.all_packages_map.iter() {
-                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
-                }
-            }
-            else if entry == "Sets" {
-                for (set, pkgs) in data_clone.portage_sets_map.iter() {
-                    model_category.insert_with_values(None, &[0, 1], &[&set, &(pkgs.len() as u64)]);
-                }
-            }
+            //if entry == "Installed Packages" {
+            //    for (category, pkgs) in data_clone.installed_packages_map.iter() {
+            //        model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+            //    }
+            //}
+            //else if entry == "All Packages" {
+            //    for (category, pkgs) in data_clone.all_packages_map.iter() {
+            //        model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+            //    }
+            //}
+            //else if entry == "Sets" {
+            //    for (set, pkgs) in data_clone.portage_sets_map.iter() {
+            //        model_category.insert_with_values(None, &[0, 1], &[&set, &(pkgs.len() as u64)]);
+            //    }
+            //}
         }
     });
 
@@ -157,24 +166,24 @@ fn main() {
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
-                let mut blank_set = std::collections::BTreeSet::new();
-                let pkgs = if entry == "Installed Packages"{
-                    //println!("{:?}", selected);
-                    data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
-                }
-                else if entry == "All Packages" {
-                    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
-                }
-                else if entry == "Sets" {
-                    data.portage_sets_map.get(&selected).unwrap_or(&blank_set)
-                }
-                else {
-                    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
-                };
-                for (i, pkg) in pkgs.iter().enumerate() {
-                    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);
-                }
+                //let mut blank_set = std::collections::BTreeSet::new();
+                //let pkgs = if entry == "Installed Packages"{
+                //    //println!("{:?}", selected);
+                //    data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
+                //}
+                //else if entry == "All Packages" {
+                //    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
+                //}
+                //else if entry == "Sets" {
+                //    data.portage_sets_map.get(&selected).unwrap_or(&blank_set)
+                //}
+                //else {
+                //    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
+                //};
+                //for (i, pkg) in pkgs.iter().enumerate() {
+                //    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
+                //    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);
+                //}
             }
         }
     });

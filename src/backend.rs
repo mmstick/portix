@@ -2,76 +2,17 @@ extern crate rusqlite;
 
 use self::rusqlite::Connection;
 
+use std::collections::HashMap;
+use std::fs;
 use std::process::Command;
 use std::thread;
-use std::collections::{HashMap, BTreeMap, BTreeSet};
-use std::fs;
-
-//#[derive(Clone, Debug, Eq)]
-//pub struct Pkg {
-//    pub name: String,
-//    pub versions: Vec<String>,
-//    pub installed_version: String,
-//    pub recommended_version: String,
-//    pub desc: String,
-//}
-//
-//impl Pkg {
-//    pub fn new<S: Into<String>>(name: S, versions: Vec<String>, installed_version: S, recommended_version: S, desc: S) -> Self {
-//        Pkg {
-//            name: name.into(),
-//            versions: versions,
-//            installed_version: installed_version.into(),
-//            recommended_version: recommended_version.into(),
-//            desc: desc.into()
-//        }
-//    }
-//}
-//
-//impl Ord for Pkg {
-//    fn cmp(&self, other: &Pkg) -> ::std::cmp::Ordering {
-//        self.name.cmp(&other.name)
-//    }
-//}
-//
-//impl PartialOrd for Pkg {
-//    fn partial_cmp(&self, other: &Pkg) -> Option<::std::cmp::Ordering> {
-//        Some(self.name.cmp(&other.name))
-//    }
-//}
-//
-//impl PartialEq for Pkg {
-//    fn eq(&self, other: &Pkg) -> bool {
-//        self.name == other.name
-//    }
-//}
-
-//#[derive(Clone, Debug)]
-//pub struct Data {
-//    // String == category
-//    pub all_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
-//    // String == category
-//    pub installed_packages_map: BTreeMap<String, BTreeSet<Pkg>>,
-//    // String == set name
-//    pub portage_sets_map: BTreeMap<String, BTreeSet<Pkg>>,
-//}
 
 pub trait PortixConnection {
     fn parse_for_pkgs(&self);
     fn parse_for_sets(&self);
-    fn get_rows(&self) -> self::rusqlite::Rows;
-    fn get_pkgs(&self, table: &str) -> self::rusqlite::Rows;
 }
 
 impl PortixConnection for Connection {
-    //pub fn new() -> Self {
-    //    Data {
-    //        all_packages_map: BTreeMap::new(),
-    //        installed_packages_map: BTreeMap::new(),
-    //        portage_sets_map: BTreeMap::new(),
-    //    }
-    //}
-
     fn parse_for_pkgs(&self) {
         self.execute("CREATE TABLE all_packages (
                       category            TEXT,
@@ -89,6 +30,7 @@ impl PortixConnection for Connection {
                       recommended_version TEXT,
                       description         TEXT
                       )", &[]).unwrap();
+
         let child_output = thread::spawn(move || {
             String::from_utf8(Command::new("sh")
                     .arg("-c")
@@ -201,18 +143,12 @@ impl PortixConnection for Connection {
                         }
                         &keyword
                     });
-                    //self.all_packages_map.entry(category.to_string())
-                    //                .or_insert(BTreeSet::new())
-                    //                .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, &desc));
                     self.execute("INSERT INTO all_packages (category, package, versions, installed_version, recommended_version, description)
                                   VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                                   &[&category, &pkg, &versions, &*installed_version, &*recommended_version, &desc]).unwrap();
                       
                       
                     if !installed_version.is_empty() {
-                        //self.installed_packages_map.entry(category.to_string())
-                        //                      .or_insert(BTreeSet::new())
-                        //                      .insert(Pkg::new(pkg, versions.clone(), installed_version, recommended_version, &desc));
                         self.execute("INSERT INTO installed_packages (category, package, versions, installed_version, recommended_version, description)
                                       VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                                       &[&category, &pkg, &versions, &*installed_version, &*recommended_version, &desc]).unwrap();
@@ -230,8 +166,8 @@ impl PortixConnection for Connection {
 
     fn parse_for_sets(&self) {
         self.execute("CREATE TABLE portage_sets (
-                      category            TEXT,
-                      package             TEXT,
+                      set                 TEXT,
+                      category_and_pkg    TEXT,
                       versions            TEXT,
                       installed_version   TEXT,
                       recommended_version TEXT,
@@ -239,7 +175,7 @@ impl PortixConnection for Connection {
                       )", &[]).unwrap();
         for set in fs::read_dir("/etc/portage/sets").expect("failed to find /etc/portage/sets directory") {
             let set = set.expect("intermittent IO error");
-            let set_name = set.file_name().into_string().unwrap();
+            //let set_name = set.file_name().into_string().unwrap();
             use ::std::io::BufRead;
             let set_file = ::std::io::BufReader::new(fs::File::open(set.path()).unwrap());
             for line in set_file.lines() {
@@ -259,30 +195,18 @@ impl PortixConnection for Connection {
                 //    }
                 //}
                 
-                let mut rows = self.get_rows();
+                let mut statement = self.prepare("SELECT category, package, versions, installed_version, recommended_version, description FROM all_packages").expect("sql cannot be converted to a C string");
+                let mut rows = statement.query(&[]).expect("failed to query database");
                 while let Some(Ok(row)) = rows.next() {
                     if row.get::<_, String>(0) == category && row.get::<_, String>(1) == pkg {
-                        self.execute("INSERT INTO portage_sets (category, package, versions, installed_version, recommended_version, description)
+                        self.execute("INSERT INTO portage_sets (set, category_and_pkg, versions, installed_version, recommended_version, description)
                                       VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                                      &[&category, &pkg, &row.get::<_, String>(2), &row.get::<_, String>(3), &row.get::<_, String>(4), &row.get::<_, String>(5)]).unwrap();
+                                      &[&set.path().file_name().unwrap().to_str(), &line, &row.get::<_, String>(2), &row.get::<_, String>(3), &row.get::<_, String>(4), &row.get::<_, String>(5)]).unwrap();
                         break;
                     }
                 }
             }
         }
-    }
-
-    fn get_rows(&self) -> self::rusqlite::Rows {
-        let statement = self.prepare("SELECT category, package, versions, installed_version, recommended_version, description FROM all_packages").expect("sql cannot be converted to a C string");
-        statement.query(&[]).expect("failed to query database")
-    }
-
-    fn get_pkgs(&self, table: &str) -> self::rusqlite::Rows {
-        let statement = self.prepare(&format!("SELECT category
-                                                  FROM {}
-                                                  GROUP BY category, package
-                                                  HAVING COUNT(*) > 1", table)).expect("sql cannot be converted to a C string");
-        statement.query(&[]).expect("failed to query database")
     }
 }
 

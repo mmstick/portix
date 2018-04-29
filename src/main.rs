@@ -2,6 +2,8 @@
 extern crate gtk;
 extern crate rusqlite;
 
+use std::path::Path;
+
 use backend::PortixConnection;
 
 use gtk::prelude::*;
@@ -15,9 +17,11 @@ fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
-    let conn = Connection::open_in_memory().unwrap();
-    conn.parse_for_pkgs();
-    conn.parse_for_sets();
+    let conn = Connection::open("./target/debug/portix.db").unwrap();
+    if !Path::new("./target/debug/portix.db").exists() {
+        conn.parse_for_pkgs();
+        conn.parse_for_sets();
+    }
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -77,17 +81,11 @@ fn main() {
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     //for (category, pkgs) in data.all_packages_map.iter() {
     //}
-    let mut statement_category = conn.prepare("SELECT DISTINCT category FROM all_packages").expect("sql cannot be converted to a C string");
-    let mut rows_category = statement_category.query(&[]).expect("failed to query database");
-    while let Some(Ok(row_category)) = rows_category.next() {
-        let mut statement_pkg = conn.prepare(&format!("SELECT package FROM all_packages WHERE category = '{}'", row_category.get::<_, String>(0))).expect("sql cannot be converted to a C string");
-        let mut rows_pkg = statement_category.query(&[]).expect("failed to query database");
+    let mut statement = conn.prepare("SELECT category, count(*) as pkg_count FROM all_packages GROUP BY category").expect("sql cannot be converted to a C string");
+    let mut rows = statement.query(&[]).expect("failed to query database");
 
-        let mut pkg_count: u64 = 0;
-        while let Some(Ok(_)) = rows_pkg.next() {
-            pkg_count += 1;
-        }
-        model_category.insert_with_values(None, &[0,1], &[&row_category.get::<_, String>(0), &pkg_count]);
+    while let Some(Ok(row)) = rows.next() {
+        model_category.insert_with_values(None, &[0,1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
     }
 
     let tree_view_category = gtk::TreeView::new_with_model(&model_category);
@@ -144,25 +142,34 @@ fn main() {
     window.add(&vbox);
     window.show_all();
 
-    //let data_clone = data.clone();
+    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
     combo_box.connect_changed(move |combo_box| {
         if let Some(entry) = combo_box.get_active_text() {
             model_category.clear();
-            //if entry == "Installed Packages" {
-            //    for (category, pkgs) in data_clone.installed_packages_map.iter() {
-            //        model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
-            //    }
-            //}
-            //else if entry == "All Packages" {
-            //    for (category, pkgs) in data_clone.all_packages_map.iter() {
-            //        model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
-            //    }
-            //}
-            //else if entry == "Sets" {
-            //    for (set, pkgs) in data_clone.portage_sets_map.iter() {
-            //        model_category.insert_with_values(None, &[0, 1], &[&set, &(pkgs.len() as u64)]);
-            //    }
-            //}
+            if entry == "Installed Packages" {
+                let mut statement = conn_clone.prepare("SELECT category, count(*) as pkg_count FROM installed_packages GROUP BY category").expect("sql cannot be converted to a C string");
+                let mut rows = statement.query(&[]).expect("failed to query database");
+
+                while let Some(Ok(row)) = rows.next() {
+                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
+                }
+            }
+            else if entry == "All Packages" {
+                let mut statement = conn_clone.prepare("SELECT category, count(*) as pkg_count FROM all_packages GROUP BY category").expect("sql cannot be converted to a C string");
+                let mut rows = statement.query(&[]).expect("failed to query database");
+
+                while let Some(Ok(row)) = rows.next() {
+                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
+                }
+            }
+            else if entry == "Sets" {
+                let mut statement = conn_clone.prepare("SELECT set, count(*) FROM portage_sets GROUP BY set").expect("sql cannot be converted to a C string");
+                let mut rows = statement.query(&[]).expect("failed to query database");
+
+                while let Some(Ok(row)) = rows.next() {
+                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
+                }
+            }
         }
     });
 

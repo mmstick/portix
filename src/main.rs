@@ -74,13 +74,20 @@ fn main() {
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
 
-    //let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
+    let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     //for (category, pkgs) in data.all_packages_map.iter() {
     //}
-    let statement = self.prepare("SELECT category, package, versions, installed_version, recommended_version, description FROM all_packages").expect("sql cannot be converted to a C string");
-    let mut rows = statement.query(&[]).expect("failed to query database");
-    while let Some(Ok(row)) = rows.next() {
-        model_category.insert_with_values(None, &[0,1], &[&row.get(0), &(pkgs.len() as u64)]);
+    let mut statement_category = conn.prepare("SELECT DISTINCT category FROM all_packages").expect("sql cannot be converted to a C string");
+    let mut rows_category = statement_category.query(&[]).expect("failed to query database");
+    while let Some(Ok(row_category)) = rows_category.next() {
+        let mut statement_pkg = conn.prepare(&format!("SELECT package FROM all_packages WHERE category = '{}'", row_category.get::<_, String>(0))).expect("sql cannot be converted to a C string");
+        let mut rows_pkg = statement_category.query(&[]).expect("failed to query database");
+
+        let mut pkg_count: u64 = 0;
+        while let Some(Ok(_)) = rows_pkg.next() {
+            pkg_count += 1;
+        }
+        model_category.insert_with_values(None, &[0,1], &[&row_category.get::<_, String>(0), &pkg_count]);
     }
 
     let tree_view_category = gtk::TreeView::new_with_model(&model_category);

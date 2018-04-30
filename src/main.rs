@@ -193,37 +193,84 @@ fn main() {
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
-                if entry == "Installed Packages"{
-                }
-                else if entry == "All Packages" {
-                    let mut statement = conn_clone.prepare(
-                            &format!(r#"SELECT all_packages.name AS package_name,
-                                        IFNULL(installed_packages.version, "") AS installed_version,
-                                        IFNULL(recommended_packages.version, "Not available") AS recommended_version,
-                                        all_packages.description AS description
-                                        FROM all_packages
-                                        LEFT JOIN installed_packages
-                                        ON all_packages.category = installed_packages.category
-                                        AND all_packages.name = installed_packages.name
-                                        LEFT JOIN recommended_packages
-                                        ON all_packages.category = recommended_packages.category
-                                        AND all_packages.name = recommended_packages.name
-                                        WHERE all_packages.category LIKE '{}'
-                                        GROUP BY package_name
-                                        ORDER BY all_packages.category ASC"#,
-                                        selected)
-                        ).expect("sql cannot be converted to a C string");
-                    let mut pkg_rows = statement.query(&[]).expect("failed to query database");
-                    let mut i = 0;
-                    while let Some(Ok(row)) = pkg_rows.next() {
-                        let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                        model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
-                        i += 1;
+                let selection = if entry == "Installed Packages"{
+                        format!(r#"SELECT installed_packages.name AS package_name,
+                                   IFNULL(installed_packages.version, "") AS installed_version,
+                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                   all_packages.description AS description
+                                   FROM installed_packages
+                                   LEFT JOIN all_packages
+                                   ON installed_packages.category = all_packages.category
+                                   AND installed_packages.name = all_packages.name
+                                   LEFT JOIN recommended_packages
+                                   ON all_packages.category = recommended_packages.category
+                                   AND all_packages.name = recommended_packages.name
+                                   WHERE installed_packages.category LIKE '{}'
+                                   GROUP BY package_name
+                                   ORDER BY installed_packages.category ASC"#,
+                                   selected)
                     }
-                }
-                else if entry == "Sets" {
-                }
-                else {
+                    else if entry == "All Packages" {
+                        format!(r#"SELECT all_packages.name AS package_name,
+                                   IFNULL(installed_packages.version, "") AS installed_version,
+                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                   all_packages.description AS description
+                                   FROM all_packages
+                                   LEFT JOIN installed_packages
+                                   ON all_packages.category = installed_packages.category
+                                   AND all_packages.name = installed_packages.name
+                                   LEFT JOIN recommended_packages
+                                   ON all_packages.category = recommended_packages.category
+                                   AND all_packages.name = recommended_packages.name
+                                   WHERE all_packages.category LIKE '{}'
+                                   GROUP BY package_name
+                                   ORDER BY all_packages.category ASC"#,
+                                   selected)
+                    }
+                    else if entry == "Sets" {
+                        format!(r#"SELECT portage_sets.category_and_name AS category_and_name,
+                                   IFNULL(installed_packages.version, "") AS installed_version,
+                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                   all_packages.description AS description
+                                   FROM portage_sets
+                                   LEFT JOIN all_packages
+                                   ON portage_sets.category = all_packages.category
+                                   AND portage_sets.name = all_packages.name
+                                   LEFT JOIN installed_packages
+                                   ON portage_sets.category = installed_packages.category
+                                   AND portage_sets.name = installed_packages.name
+                                   LEFT JOIN recommended_packages
+                                   ON portage_sets.category = recommended_packages.category
+                                   AND portage_sets.name = recommended_packages.name
+                                   WHERE portage_sets.portage_set LIKE '{}'
+                                   GROUP BY category_and_name
+                                   ORDER BY portage_sets.portage_set ASC"#,
+                                   selected)
+                    }
+                    else {
+                        format!(r#"SELECT all_packages.name AS package_name,
+                                   IFNULL(installed_packages.version, "") AS installed_version,
+                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                   all_packages.description AS description
+                                   FROM all_packages
+                                   LEFT JOIN installed_packages
+                                   ON all_packages.category = installed_packages.category
+                                   AND all_packages.name = installed_packages.name
+                                   LEFT JOIN recommended_packages
+                                   ON all_packages.category = recommended_packages.category
+                                   AND all_packages.name = recommended_packages.name
+                                   WHERE all_packages.category LIKE '{}'
+                                   GROUP BY package_name
+                                   ORDER BY all_packages.category ASC"#,
+                                   selected)
+                    };
+                let mut statement = conn_clone.prepare(&selection).expect("sql cannot be converted to a C string");
+                let mut pkg_rows = statement.query(&[]).expect("failed to query database");
+                let mut i = 0;
+                while let Some(Ok(row)) = pkg_rows.next() {
+                    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
+                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
+                    i += 1;
                 }
             }
         }

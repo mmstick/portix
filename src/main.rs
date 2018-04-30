@@ -85,7 +85,9 @@ fn main() {
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     //for (category, pkgs) in data.all_packages_map.iter() {
     //}
-    let mut statement = conn.prepare("SELECT category, count(*) as pkg_count FROM all_packages GROUP BY category").expect("sql cannot be converted to a C string");
+    let mut statement = conn.prepare("SELECT category, count(*) as pkg_count
+                                      FROM all_packages
+                                      GROUP BY category").expect("sql cannot be converted to a C string");
     let mut rows = statement.query(&[]).expect("failed to query database");
 
     while let Some(Ok(row)) = rows.next() {
@@ -200,9 +202,9 @@ fn main() {
                                         LEFT JOIN recommended_packages
                                         ON all_packages.category = recommended_packages.category
                                         AND all_packages.name = recommended_packages.name
+                                        WHERE all_packages.category LIKE '{}'
                                         GROUP BY package_name
-                                        ORDER BY all_packages.category ASC
-                                        WHERE all_packages.category LIKE '{}'"#,
+                                        ORDER BY all_packages.category ASC"#,
                                         selected)
                         ).expect("sql cannot be converted to a C string");
                     let mut pkg_rows = statement.query(&[]).expect("failed to query database");

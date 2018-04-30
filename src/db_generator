@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+import_all_packages() {
+	sqlite3 -csv ./target/debug/portix.db<<-EXIT_HERE
+	drop table if exists all_packages;
+	create table all_packages (category TEXT,package TEXT,versions TEXT,description TEXT);
+	.import ./target/debug/portix_all_packages.csv all_packages
+	EXIT_HERE
+}
+
+import_recommended_packages () {
+	sqlite3 -csv ./target/debug/portix.db<<-EXIT_HERE
+	drop table if exists recommended_packages;
+	create table recommended_packages (category TEXT,package TEXT,recommended_version TEXT);
+	.import ./target/debug/portix_recommended_packages.csv recommended_packages
+	EXIT_HERE
+}
+
+import_installed_packages () {
+	sqlite3 -csv ./target/debug/portix.db<<-EXIT_HERE
+	drop table if exists installed_packages;
+	create table installed_packages (category TEXT,package TEXT,installed_version TEXT);
+	.import ./target/debug/portix_installed_packages.csv installed_packages
+	EXIT_HERE
+}
+
+main() {
+	import_all_packages
+	import_recommended_packages
+	import_installed_packages
+}
+
+main

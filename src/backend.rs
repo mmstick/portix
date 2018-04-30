@@ -1,4 +1,3 @@
-extern crate csv;
 extern crate rusqlite;
 
 use self::rusqlite::Connection;
@@ -110,28 +109,8 @@ impl PortixConnection for Connection {
         installed_packages_csv.write_all(installed_packages_output.as_bytes()).expect("failed to read installed packages output into file");
         recommended_packages_csv.write_all(recommended_packages_output.as_bytes()).expect("failed to read recommended packages output into file");
 
-        let mut all_packages_reader = csv::ReaderBuilder::new().has_headers(false).from_path("./target/debug/portix_all_packages.csv").unwrap();
-        let mut installed_packages_reader = csv::ReaderBuilder::new().has_headers(false).from_path("./target/debug/portix_installed_packages.csv").unwrap();
-        let mut recommended_packages_reader = csv::ReaderBuilder::new().has_headers(false).from_path("./target/debug/portix_recommended_packages.csv").unwrap();
+        Command::new("./src/db_generator").spawn().expect("failed to spawn db_generator helper script").wait().expect("failed to run db_generator helper script");
 
-        for record in all_packages_reader.records() {
-            let record = record.expect("failed to get csv record");
-            self.execute("INSERT INTO all_packages (category, package, versions, description)
-                          VALUES (?1, ?2, ?3, ?4)",
-                          &[&&record[0], &&record[1], &&record[2], &&record[3]]).unwrap();
-        }
-        for record in installed_packages_reader.records() {
-            let record = record.expect("failed to get csv record");
-            self.execute("INSERT INTO installed_packages (category, package, installed_version)
-                          VALUES (?1, ?2, ?3)",
-                          &[&&record[0], &&record[1], &&record[2]]).unwrap();
-        }
-        for record in recommended_packages_reader.records() {
-            let record = record.expect("failed to get csv record");
-            self.execute("INSERT INTO recommended_packages (category, package, recommended_version)
-                          VALUES (?1, ?2, ?3)",
-                          &[&&record[0], &&record[1], &&record[2]]).unwrap();
-        }
         //let global_keywords = child_global_keywords.join().unwrap();
         //let arch_list = child_arch_list.join().unwrap();
         //let mut item = String::new();

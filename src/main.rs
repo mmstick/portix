@@ -1,4 +1,3 @@
-#![feature(pattern_parentheses)]
 extern crate gtk;
 extern crate rusqlite;
 
@@ -186,26 +185,28 @@ fn main() {
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
-                //let mut blank_set = std::collections::BTreeSet::new();
-                let tuple = if entry == "Installed Packages"{
-                        ("package", "category")
+                if entry == "Installed Packages"{
+                }
+                else if entry == "All Packages" {
+                    let mut statement = conn_clone.prepare(
+                            &format!("SELECT all_packages.category, all_packages.package, installed_packages.installed_version all_packages.description \
+                                      FROM all_packages \
+                                      LEFT JOIN installed_packages \
+                                      ON all_packages.category = installed_packages.category AND all_packages.package = installed_packages.package AND all_packages.package = installed_packages.package
+                                      WHERE category LIKE '{}'",
+                                      selected)
+                        ).expect("sql cannot be converted to a C string");
+                    let mut pkg_rows = statement.query(&[]).expect("failed to query database");
+                    let mut i = 0;
+                    while let Some(Ok(row)) = pkg_rows.next() {
+                        let tree_iter_pkgs = model_pkg_list.insert(i as i32);
+                        model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
+                        i += 1;
                     }
-                    else if entry == "All Packages" {
-                        ("package", "category")
-                    }
-                    else if entry == "Sets" {
-                        ("category_and_pkg", "portage_set")
-                    }
-                    else {
-                        ("package", "category")
-                    };
-                let mut statement = conn_clone.prepare(&format!("SELECT {}, installed_version, recommended_version, description FROM all_packages WHERE {} LIKE '{}'", tuple.0, tuple.1, selected)).expect("sql cannot be converted to a C string");
-                let mut pkg_rows = statement.query(&[]).expect("failed to query database");
-                let mut i = 0;
-                while let Some(Ok(row)) = pkg_rows.next() {
-                    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
-                    i += 1;
+                }
+                else if entry == "Sets" {
+                }
+                else {
                 }
             }
         }

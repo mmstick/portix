@@ -17,11 +17,16 @@ fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
-    let conn = Connection::open("./target/debug/portix.db").unwrap();
-    if !Path::new("./target/debug/portix.db").exists() {
+    let conn = if Path::new("./target/debug/portix.db").exists() {
+        let conn = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        conn
+    }
+    else {
+        let conn = Connection::open("./target/debug/portix.db").unwrap();
         conn.parse_for_pkgs();
         conn.parse_for_sets();
-    }
+        conn
+    };
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -163,7 +168,7 @@ fn main() {
                 }
             }
             else if entry == "Sets" {
-                let mut statement = conn_clone.prepare("SELECT set, count(*) FROM portage_sets GROUP BY set").expect("sql cannot be converted to a C string");
+                let mut statement = conn_clone.prepare("SELECT portage_set, count(*) FROM portage_sets GROUP BY portage_set").expect("sql cannot be converted to a C string");
                 let mut rows = statement.query(&[]).expect("failed to query database");
 
                 while let Some(Ok(row)) = rows.next() {

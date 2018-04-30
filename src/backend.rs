@@ -166,7 +166,7 @@ impl PortixConnection for Connection {
 
     fn parse_for_sets(&self) {
         self.execute("CREATE TABLE portage_sets (
-                      set                 TEXT,
+                      portage_set         TEXT,
                       category_and_pkg    TEXT,
                       versions            TEXT,
                       installed_version   TEXT,
@@ -199,7 +199,7 @@ impl PortixConnection for Connection {
                 let mut rows = statement.query(&[]).expect("failed to query database");
                 while let Some(Ok(row)) = rows.next() {
                     if row.get::<_, String>(0) == category && row.get::<_, String>(1) == pkg {
-                        self.execute("INSERT INTO portage_sets (set, category_and_pkg, versions, installed_version, recommended_version, description)
+                        self.execute("INSERT INTO portage_sets (portage_set, category_and_pkg, versions, installed_version, recommended_version, description)
                                       VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                                       &[&set.path().file_name().unwrap().to_str(), &line, &row.get::<_, String>(2), &row.get::<_, String>(3), &row.get::<_, String>(4), &row.get::<_, String>(5)]).unwrap();
                         break;

@@ -1,8 +1,15 @@
 #![feature(pattern_parentheses)]
 extern crate gtk;
+extern crate rusqlite;
+
+use std::path::Path;
+
+use backend::PortixConnection;
 
 use gtk::prelude::*;
 use gtk::{Window, WindowType};
+
+use rusqlite::Connection;
 
 mod backend;
 
@@ -10,9 +17,16 @@ fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
-    let mut data = backend::Data::new();
-    data.parse_for_pkgs();
-    data.parse_for_sets();
+    let conn = if Path::new("./target/debug/portix.db").exists() {
+        let conn = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        conn
+    }
+    else {
+        let conn = Connection::open("./target/debug/portix.db").unwrap();
+        conn.parse_for_pkgs();
+        conn.parse_for_sets();
+        conn
+    };
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -70,8 +84,13 @@ fn main() {
 
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
-    for (category, pkgs) in data.all_packages_map.iter() {
-        model_category.insert_with_values(None, &[0,1], &[&category, &(pkgs.len() as u64)]);
+    //for (category, pkgs) in data.all_packages_map.iter() {
+    //}
+    let mut statement = conn.prepare("SELECT category, count(*) as pkg_count FROM all_packages GROUP BY category").expect("sql cannot be converted to a C string");
+    let mut rows = statement.query(&[]).expect("failed to query database");
+
+    while let Some(Ok(row)) = rows.next() {
+        model_category.insert_with_values(None, &[0,1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
     }
 
     let tree_view_category = gtk::TreeView::new_with_model(&model_category);
@@ -128,28 +147,38 @@ fn main() {
     window.add(&vbox);
     window.show_all();
 
-    let data_clone = data.clone();
+    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
     combo_box.connect_changed(move |combo_box| {
         if let Some(entry) = combo_box.get_active_text() {
             model_category.clear();
             if entry == "Installed Packages" {
-                for (category, pkgs) in data_clone.installed_packages_map.iter() {
-                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+                let mut statement = conn_clone.prepare("SELECT category, count(*) as pkg_count FROM installed_packages GROUP BY category").expect("sql cannot be converted to a C string");
+                let mut rows = statement.query(&[]).expect("failed to query database");
+
+                while let Some(Ok(row)) = rows.next() {
+                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
                 }
             }
             else if entry == "All Packages" {
-                for (category, pkgs) in data_clone.all_packages_map.iter() {
-                    model_category.insert_with_values(None, &[0, 1], &[&category, &(pkgs.len() as u64)]);
+                let mut statement = conn_clone.prepare("SELECT category, count(*) as pkg_count FROM all_packages GROUP BY category").expect("sql cannot be converted to a C string");
+                let mut rows = statement.query(&[]).expect("failed to query database");
+
+                while let Some(Ok(row)) = rows.next() {
+                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
                 }
             }
             else if entry == "Sets" {
-                for (set, pkgs) in data_clone.portage_sets_map.iter() {
-                    model_category.insert_with_values(None, &[0, 1], &[&set, &(pkgs.len() as u64)]);
+                let mut statement = conn_clone.prepare("SELECT portage_set, count(*) FROM portage_sets GROUP BY portage_set").expect("sql cannot be converted to a C string");
+                let mut rows = statement.query(&[]).expect("failed to query database");
+
+                while let Some(Ok(row)) = rows.next() {
+                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
                 }
             }
         }
     });
 
+    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
     tree_view_category.get_selection().connect_changed(move |selected_category| {
         model_pkg_list.clear();
         selected_category.set_mode(gtk::SelectionMode::Single);
@@ -157,23 +186,26 @@ fn main() {
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
-                let mut blank_set = std::collections::BTreeSet::new();
-                let pkgs = if entry == "Installed Packages"{
-                    //println!("{:?}", selected);
-                    data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
-                }
-                else if entry == "All Packages" {
-                    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
-                }
-                else if entry == "Sets" {
-                    data.portage_sets_map.get(&selected).unwrap_or(&blank_set)
-                }
-                else {
-                    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
-                };
-                for (i, pkg) in pkgs.iter().enumerate() {
+                //let mut blank_set = std::collections::BTreeSet::new();
+                let tuple = if entry == "Installed Packages"{
+                        ("package", "category")
+                    }
+                    else if entry == "All Packages" {
+                        ("package", "category")
+                    }
+                    else if entry == "Sets" {
+                        ("category_and_pkg", "portage_set")
+                    }
+                    else {
+                        ("package", "category")
+                    };
+                let mut statement = conn_clone.prepare(&format!("SELECT {}, installed_version, recommended_version, description FROM all_packages WHERE {} LIKE '{}'", tuple.0, tuple.1, selected)).expect("sql cannot be converted to a C string");
+                let mut pkg_rows = statement.query(&[]).expect("failed to query database");
+                let mut i = 0;
+                while let Some(Ok(row)) = pkg_rows.next() {
                     let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);
+                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
+                    i += 1;
                 }
             }
         }

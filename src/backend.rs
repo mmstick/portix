@@ -175,7 +175,6 @@ impl PortixConnection for Connection {
                       )", &[]).unwrap();
         for set in fs::read_dir("/etc/portage/sets").expect("failed to find /etc/portage/sets directory") {
             let set = set.expect("intermittent IO error");
-            //let set_name = set.file_name().into_string().unwrap();
             use ::std::io::BufRead;
             let set_file = ::std::io::BufReader::new(fs::File::open(set.path()).unwrap());
             for line in set_file.lines() {
@@ -184,16 +183,6 @@ impl PortixConnection for Connection {
                 let (category, pkg) = {
                     (split.next().unwrap(), split.next().unwrap())
                 }; 
-                //for all_pkg in self.all_packages_map.get(category).unwrap() {
-                //    if all_pkg.name == pkg {
-                //        let mut all_pkg_clone = all_pkg.clone();
-                //        all_pkg_clone.name = line.to_string();
-                //        self.portage_sets_map.entry(set_name.clone())
-                //                              .or_insert(BTreeSet::new())
-                //                              .insert(all_pkg_clone);
-                //        break;
-                //    }
-                //}
                 
                 let mut statement = self.prepare("SELECT category, package, versions, installed_version, recommended_version, description FROM all_packages").expect("sql cannot be converted to a C string");
                 let mut rows = statement.query(&[]).expect("failed to query database");

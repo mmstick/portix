@@ -178,6 +178,7 @@ fn main() {
         }
     });
 
+    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
     tree_view_category.get_selection().connect_changed(move |selected_category| {
         model_pkg_list.clear();
         selected_category.set_mode(gtk::SelectionMode::Single);
@@ -186,23 +187,26 @@ fn main() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
                 //let mut blank_set = std::collections::BTreeSet::new();
-                //let pkgs = if entry == "Installed Packages"{
-                //    //println!("{:?}", selected);
-                //    data.installed_packages_map.get(&selected).unwrap_or(&blank_set)
-                //}
-                //else if entry == "All Packages" {
-                //    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
-                //}
-                //else if entry == "Sets" {
-                //    data.portage_sets_map.get(&selected).unwrap_or(&blank_set)
-                //}
-                //else {
-                //    data.all_packages_map.get(&selected).unwrap_or(&blank_set)
-                //};
-                //for (i, pkg) in pkgs.iter().enumerate() {
-                //    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                //    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&pkg.name, &pkg.installed_version, &pkg.recommended_version, &pkg.desc]);
-                //}
+                let tuple = if entry == "Installed Packages"{
+                        ("package", "category")
+                    }
+                    else if entry == "All Packages" {
+                        ("package", "category")
+                    }
+                    else if entry == "Sets" {
+                        ("category_and_pkg", "portage_set")
+                    }
+                    else {
+                        ("package", "category")
+                    };
+                let mut statement = conn_clone.prepare(&format!("SELECT {}, installed_version, recommended_version, description FROM all_packages WHERE {} LIKE '{}'", tuple.0, tuple.1, selected)).expect("sql cannot be converted to a C string");
+                let mut pkg_rows = statement.query(&[]).expect("failed to query database");
+                let mut i = 0;
+                while let Some(Ok(row)) = pkg_rows.next() {
+                    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
+                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
+                    i += 1;
+                }
             }
         }
     });

@@ -152,35 +152,31 @@ fn main() {
     combo_box.connect_changed(move |combo_box| {
         if let Some(entry) = combo_box.get_active_text() {
             model_category.clear();
-            if entry == "Installed Packages" {
-                let mut statement = conn_clone.prepare("SELECT category, count(DISTINCT name) as pkg_count
-                                                        FROM installed_packages
-                                                        GROUP BY category").expect("sql cannot be converted to a C string");
-                let mut rows = statement.query(&[]).expect("failed to query database");
-
-                while let Some(Ok(row)) = rows.next() {
-                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
+            let selection = if entry == "Installed Packages" {
+                    "SELECT category, count(DISTINCT name) as pkg_count
+                     FROM installed_packages
+                     GROUP BY category"
                 }
-            }
-            else if entry == "All Packages" {
-                let mut statement = conn_clone.prepare("SELECT category, count(DISTINCT name) as pkg_count
-                                                        FROM all_packages
-                                                        GROUP BY category").expect("sql cannot be converted to a C string");
-                let mut rows = statement.query(&[]).expect("failed to query database");
-
-                while let Some(Ok(row)) = rows.next() {
-                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
+                else if entry == "All Packages" {
+                    "SELECT category, count(DISTINCT name) as pkg_count
+                     FROM all_packages
+                     GROUP BY category"
                 }
-            }
-            else if entry == "Sets" {
-                let mut statement = conn_clone.prepare("SELECT portage_set, count(DISTINCT category_and_name) as pkg_count
-                                                        FROM portage_sets
-                                                        GROUP BY portage_set").expect("sql cannot be converted to a C string");
-                let mut rows = statement.query(&[]).expect("failed to query database");
-
-                while let Some(Ok(row)) = rows.next() {
-                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
+                else if entry == "Sets" {
+                    "SELECT portage_set, count(DISTINCT category_and_name) as pkg_count
+                     FROM portage_sets
+                     GROUP BY portage_set"
                 }
+                else {
+                    "SELECT category, count(DISTINCT name) as pkg_count
+                     FROM all_packages
+                     GROUP BY category"
+                };
+            let mut statement = conn_clone.prepare(selection).expect("sql cannot be converted to a C string");
+            let mut rows = statement.query(&[]).expect("failed to query database");
+
+            while let Some(Ok(row)) = rows.next() {
+                model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
             }
         }
     });

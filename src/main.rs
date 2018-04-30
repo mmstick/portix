@@ -85,7 +85,7 @@ fn main() {
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     //for (category, pkgs) in data.all_packages_map.iter() {
     //}
-    let mut statement = conn.prepare("SELECT category, count(*) as pkg_count
+    let mut statement = conn.prepare("SELECT category, count(DISTINCT name) as pkg_count
                                       FROM all_packages
                                       GROUP BY category").expect("sql cannot be converted to a C string");
     let mut rows = statement.query(&[]).expect("failed to query database");
@@ -153,7 +153,9 @@ fn main() {
         if let Some(entry) = combo_box.get_active_text() {
             model_category.clear();
             if entry == "Installed Packages" {
-                let mut statement = conn_clone.prepare("SELECT category, count(*) as pkg_count FROM installed_packages GROUP BY category").expect("sql cannot be converted to a C string");
+                let mut statement = conn_clone.prepare("SELECT category, count(DISTINCT name) as pkg_count
+                                                        FROM installed_packages
+                                                        GROUP BY category").expect("sql cannot be converted to a C string");
                 let mut rows = statement.query(&[]).expect("failed to query database");
 
                 while let Some(Ok(row)) = rows.next() {
@@ -161,7 +163,9 @@ fn main() {
                 }
             }
             else if entry == "All Packages" {
-                let mut statement = conn_clone.prepare("SELECT category, count(*) as pkg_count FROM all_packages GROUP BY category").expect("sql cannot be converted to a C string");
+                let mut statement = conn_clone.prepare("SELECT category, count(DISTINCT name) as pkg_count
+                                                        FROM all_packages
+                                                        GROUP BY category").expect("sql cannot be converted to a C string");
                 let mut rows = statement.query(&[]).expect("failed to query database");
 
                 while let Some(Ok(row)) = rows.next() {
@@ -169,7 +173,9 @@ fn main() {
                 }
             }
             else if entry == "Sets" {
-                let mut statement = conn_clone.prepare("SELECT portage_set, count(*) FROM portage_sets GROUP BY portage_set").expect("sql cannot be converted to a C string");
+                let mut statement = conn_clone.prepare("SELECT portage_set, count(DISTINCT category_and_name) as pkg_count
+                                                        FROM portage_sets
+                                                        GROUP BY portage_set").expect("sql cannot be converted to a C string");
                 let mut rows = statement.query(&[]).expect("failed to query database");
 
                 while let Some(Ok(row)) = rows.next() {

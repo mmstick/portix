@@ -189,11 +189,16 @@ fn main() {
                 }
                 else if entry == "All Packages" {
                     let mut statement = conn_clone.prepare(
-                            &format!("SELECT all_packages.category, all_packages.package, installed_packages.installed_version all_packages.description \
-                                      FROM all_packages \
-                                      LEFT JOIN installed_packages \
-                                      ON all_packages.category = installed_packages.category AND all_packages.package = installed_packages.package AND all_packages.package = installed_packages.package
-                                      WHERE category LIKE '{}'",
+                            &format!("SELECT all_packages.name AS package_name,
+                                      all_packages.version AS version,
+                                      CASE WHEN installed_packages.version ISNULL THEN 'no' ELSE 'yes' END AS is_installed,
+                                      all_packages.description AS description
+                                      FROM all_packages
+                                      LEFT JOIN installed_packages
+                                      ON all_packages.category = installed_packages.category
+                                      AND all_packages.name = installed_packages.name
+                                      AND all_packages.version = installed_packages.version
+                                      WHERE all_packages.category LIKE '{}'",
                                       selected)
                         ).expect("sql cannot be converted to a C string");
                     let mut pkg_rows = statement.query(&[]).expect("failed to query database");

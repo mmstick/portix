@@ -15,20 +15,20 @@ pub trait PortixConnection {
 impl PortixConnection for Connection {
     fn parse_for_pkgs(&self) {
         self.execute("CREATE TABLE all_packages (
-                      category            TEXT,
-                      package             TEXT,
-                      versions            TEXT,
-                      description         TEXT
+                      category    TEXT,
+                      name        TEXT,
+                      version     TEXT,
+                      description TEXT
                       )", &[]).unwrap();
         self.execute("CREATE TABLE installed_packages (
-                      category            TEXT,
-                      package             TEXT,
-                      installed_version   TEXT
+                      category TEXT,
+                      name     TEXT,
+                      version  TEXT
                       )", &[]).unwrap();
         self.execute("CREATE TABLE recommended_packages (
-                      category            TEXT,
-                      package             TEXT,
-                      recommended_version TEXT
+                      category TEXT,
+                      name     TEXT,
+                      version  TEXT
                       )", &[]).unwrap();
 
         let child_output = thread::spawn(move || {
@@ -171,10 +171,10 @@ impl PortixConnection for Connection {
 
     fn parse_for_sets(&self) {
         self.execute("CREATE TABLE portage_sets (
-                      portage_set      TEXT,
-                      category_and_pkg TEXT,
-                      category         TEXT,
-                      package          TEXT
+                      portage_set       TEXT,
+                      category_and_name TEXT,
+                      category          TEXT,
+                      name              TEXT
                       )", &[]).unwrap();
         for set in fs::read_dir("/etc/portage/sets").expect("failed to find /etc/portage/sets directory") {
             let set = set.expect("intermittent IO error");
@@ -187,11 +187,11 @@ impl PortixConnection for Connection {
                     (split.next().unwrap(), split.next().unwrap())
                 }; 
                 
-                let mut statement = self.prepare("SELECT category, package FROM all_packages").expect("sql cannot be converted to a C string");
+                let mut statement = self.prepare("SELECT category, name FROM all_packages").expect("sql cannot be converted to a C string");
                 let mut rows = statement.query(&[]).expect("failed to query database");
                 while let Some(Ok(row)) = rows.next() {
                     if row.get::<_, String>(0) == category && row.get::<_, String>(1) == package {
-                        self.execute("INSERT INTO portage_sets (portage_set, category_and_pkg, category, package)
+                        self.execute("INSERT INTO portage_sets (portage_set, category_and_name, category, name)
                                       VALUES (?1, ?2, ?3, ?4)",
                                       &[&set.path().file_name().unwrap().to_str(), &line, &category, &package]).unwrap();
                         break;

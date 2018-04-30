@@ -189,17 +189,21 @@ fn main() {
                 }
                 else if entry == "All Packages" {
                     let mut statement = conn_clone.prepare(
-                            &format!("SELECT all_packages.name AS package_name,
-                                      all_packages.version AS version,
-                                      CASE WHEN installed_packages.version ISNULL THEN 'no' ELSE 'yes' END AS is_installed,
-                                      all_packages.description AS description
-                                      FROM all_packages
-                                      LEFT JOIN installed_packages
-                                      ON all_packages.category = installed_packages.category
-                                      AND all_packages.name = installed_packages.name
-                                      AND all_packages.version = installed_packages.version
-                                      WHERE all_packages.category LIKE '{}'",
-                                      selected)
+                            &format!(r#"SELECT all_packages.name AS package_name,
+                                        IFNULL(installed_packages.version, "") AS installed_version,
+                                        IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                        all_packages.description AS description
+                                        FROM all_packages
+                                        LEFT JOIN installed_packages
+                                        ON all_packages.category = installed_packages.category
+                                        AND all_packages.name = installed_packages.name
+                                        LEFT JOIN recommended_packages
+                                        ON all_packages.category = recommended_packages.category
+                                        AND all_packages.name = recommended_packages.name
+                                        GROUP BY package_name
+                                        ORDER BY all_packages.category ASC
+                                        WHERE all_packages.category LIKE '{}'"#,
+                                        selected)
                         ).expect("sql cannot be converted to a C string");
                     let mut pkg_rows = statement.query(&[]).expect("failed to query database");
                     let mut i = 0;

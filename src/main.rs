@@ -2,6 +2,7 @@ extern crate gtk;
 extern crate rusqlite;
 
 use std::path::Path;
+use std::thread;
 
 use backend::PortixConnection;
 
@@ -16,16 +17,17 @@ fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
-    let conn = if Path::new("./target/debug/portix.db").exists() {
-        let conn = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-        conn
-    }
-    else {
-        let conn = Connection::open("./target/debug/portix.db").unwrap();
-        conn.parse_for_pkgs();
-        conn.parse_for_sets();
-        conn
-    };
+    let child = thread::spawn(move || {
+            if Path::new("./target/debug/portix.db").exists() {
+                    Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap()
+            }
+            else {
+                    let conn = Connection::open("./target/debug/portix.db").unwrap();
+                    conn.parse_for_pkgs();
+                    conn.parse_for_sets();
+                    conn
+            }
+        });
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -83,8 +85,7 @@ fn main() {
 
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
-    //for (category, pkgs) in data.all_packages_map.iter() {
-    //}
+    let conn = child.join().unwrap();
     let mut statement = conn.prepare("SELECT category, count(DISTINCT name) as pkg_count
                                       FROM all_packages
                                       GROUP BY category").expect("sql cannot be converted to a C string");

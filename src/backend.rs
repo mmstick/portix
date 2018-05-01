@@ -1,6 +1,6 @@
 extern crate rusqlite;
 
-use self::rusqlite::Connection;
+use self::rusqlite::*;
 
 use std::fs;
 use std::io::prelude::*;
@@ -14,23 +14,6 @@ pub trait PortixConnection {
 
 impl PortixConnection for Connection {
     fn parse_for_pkgs(&self) {
-        self.execute("CREATE TABLE all_packages (
-                      category    TEXT,
-                      name        TEXT,
-                      version     TEXT,
-                      description TEXT
-                      )", &[]).unwrap();
-        self.execute("CREATE TABLE installed_packages (
-                      category TEXT,
-                      name     TEXT,
-                      version  TEXT
-                      )", &[]).unwrap();
-        self.execute("CREATE TABLE recommended_packages (
-                      category TEXT,
-                      name     TEXT,
-                      version  TEXT
-                      )", &[]).unwrap();
-
         let child_output = thread::spawn(move || {
             String::from_utf8(
                 Command::new("sh")
@@ -102,14 +85,36 @@ impl PortixConnection for Connection {
         let installed_packages_output = child_installed_version_output.join().unwrap();
         let recommended_packages_output = child_recommended_version_output.join().unwrap();
 
-        let mut all_packages_csv = fs::OpenOptions::new().read(true).write(true).create(true).open("./target/debug/portix_all_packages.csv").expect("failed to create portix_all_packages.csv file");
-        let mut installed_packages_csv = fs::OpenOptions::new().read(true).write(true).create(true).open("./target/debug/portix_installed_packages.csv").expect("failed to create portix_installed_packages.csv file");
-        let mut recommended_packages_csv = fs::OpenOptions::new().read(true).write(true).create(true).open("./target/debug/portix_recommended_packages.csv").expect("failed to create portix_recommended_packages.csv file");
+        let mut all_packages_csv = fs::OpenOptions::new().write(true).create(true).open("./target/debug/portix_all_packages.csv").expect("failed to create portix_all_packages.csv file");
+        let mut installed_packages_csv = fs::OpenOptions::new().write(true).create(true).open("./target/debug/portix_installed_packages.csv").expect("failed to create portix_installed_packages.csv file");
+        let mut recommended_packages_csv = fs::OpenOptions::new().write(true).create(true).open("./target/debug/portix_recommended_packages.csv").expect("failed to create portix_recommended_packages.csv file");
         all_packages_csv.write_all(output.as_bytes()).expect("failed to read all packages output into file");
         installed_packages_csv.write_all(installed_packages_output.as_bytes()).expect("failed to read installed packages output into file");
         recommended_packages_csv.write_all(recommended_packages_output.as_bytes()).expect("failed to read recommended packages output into file");
 
-        Command::new("./src/db_generator").spawn().expect("failed to spawn db_generator helper script").wait().expect("failed to run db_generator helper script");
+        rusqlite::vtab::csvtab::load_module(&self).unwrap();
+        self.execute("CREATE VIRTUAL TABLE all_packages_vtab
+                      USING csv('./target/debug/portix_all_packages.csv', category, name, version, description)", &[]).unwrap();
+        self.execute("CREATE TABLE all_packages
+                      AS SELECT *
+                      FROM all_packages_vtab", &[]).unwrap();
+        self.execute_batch("DROP TABLE all_packages_vtab").unwrap();
+
+        self.execute("CREATE VIRTUAL TABLE installed_packages_vtab
+                      USING csv('./target/debug/portix_installed_packages.csv', category, name, version)", &[]).unwrap();
+        self.execute("CREATE TABLE installed_packages
+                      AS SELECT *
+                      FROM installed_packages_vtab", &[]).unwrap();
+        self.execute_batch("DROP TABLE installed_packages_vtab").unwrap();
+
+        self.execute("CREATE VIRTUAL TABLE recommended_packages_vtab
+                      USING csv('./target/debug/portix_recommended_packages.csv', category, name, version)", &[]).unwrap();
+        self.execute("CREATE TABLE recommended_packages
+                      AS SELECT *
+                      FROM recommended_packages_vtab", &[]).unwrap();
+        self.execute_batch("DROP TABLE recommended_packages_vtab").unwrap();
+
+
 
         //let global_keywords = child_global_keywords.join().unwrap();
         //let arch_list = child_arch_list.join().unwrap();

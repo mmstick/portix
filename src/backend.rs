@@ -1,6 +1,9 @@
+extern crate regex;
 extern crate rusqlite;
 
-use self::rusqlite::*;
+use self::regex::Regex;
+
+use self::rusqlite::Connection;
 
 use std::fs;
 use std::io::prelude::*;
@@ -10,6 +13,7 @@ use std::thread;
 pub trait PortixConnection {
     fn parse_for_pkgs(&self);
     fn parse_for_sets(&self);
+    fn parse_for_ebuilds(&self);
 }
 
 impl PortixConnection for Connection {
@@ -88,11 +92,10 @@ impl PortixConnection for Connection {
         let mut all_packages_csv = fs::OpenOptions::new().write(true).create(true).open("./target/debug/portix_all_packages.csv").expect("failed to create portix_all_packages.csv file");
         let mut installed_packages_csv = fs::OpenOptions::new().write(true).create(true).open("./target/debug/portix_installed_packages.csv").expect("failed to create portix_installed_packages.csv file");
         let mut recommended_packages_csv = fs::OpenOptions::new().write(true).create(true).open("./target/debug/portix_recommended_packages.csv").expect("failed to create portix_recommended_packages.csv file");
-        all_packages_csv.write_all(output.as_bytes()).expect("failed to read all packages output into file");
-        installed_packages_csv.write_all(installed_packages_output.as_bytes()).expect("failed to read installed packages output into file");
-        recommended_packages_csv.write_all(recommended_packages_output.as_bytes()).expect("failed to read recommended packages output into file");
+        all_packages_csv.write_all(output.as_bytes()).expect("failed to write all packages output into file");
+        installed_packages_csv.write_all(installed_packages_output.as_bytes()).expect("failed to write installed packages output into file");
+        recommended_packages_csv.write_all(recommended_packages_output.as_bytes()).expect("failed to write recommended packages output into file");
 
-        rusqlite::vtab::csvtab::load_module(&self).unwrap();
         self.execute_batch("CREATE VIRTUAL TABLE all_packages_vtab
                             USING csv('./target/debug/portix_all_packages.csv', category, name, version, description);
                             CREATE TABLE all_packages AS SELECT * FROM all_packages_vtab;
@@ -199,47 +202,70 @@ impl PortixConnection for Connection {
             }
         }
     }
-}
 
-#[allow(dead_code)]
-pub fn parse_data_with_portageq() {
-    let repos = String::from_utf8(Command::new("sh")
-            .arg("-c")
-            .arg("portageq get_repos /")
-            .output()
-            .expect("failed to get repos list")
-            .stdout
-        ).expect("repo names are not UTF-8 compatible");
-    let repos: Vec<&str> = repos.trim().split(' ').collect();
-
-    for repo in repos.iter() {
-        let repo_path = String::from_utf8(Command::new("sh")
+    fn parse_for_ebuilds(&self) {
+        let repos = String::from_utf8(Command::new("sh")
                 .arg("-c")
-                .arg(format!("portageq get_repo_path / {}", repo))
+                .arg("portageq get_repos /")
                 .output()
-                .expect("failed to find repo path")
+                .expect("failed to get repos list")
                 .stdout
-            ).expect("repo path is not UTF-8 compatible");
-        let repo_path = repo_path.trim();
+            ).expect("repo names are not UTF-8 compatible");
+        let repos: Vec<String> = repos.trim().split(' ').map(|repo| repo.to_owned()).collect();
+        let mut csv_string = String::new();
 
-        for category_dir in fs::read_dir(repo_path).expect("path does not exist") {
-            let category_dir = category_dir.expect("intermittent IO error");
-            let category = category_dir.file_name().into_string().unwrap();
-            if category_dir.path().is_file() || category.starts_with(".") {
-                continue;
-            }
+        for repo in repos.into_iter() {
+            let repo_path = String::from_utf8(Command::new("sh")
+                    .arg("-c")
+                    .arg(format!("portageq get_repo_path / {}", repo))
+                    .output()
+                    .expect("failed to find repo path")
+                    .stdout
+                ).expect("repo path is not UTF-8 compatible");
+            let repo_path = repo_path.trim();
 
-            let package_dirs = match fs::read_dir(category_dir.path()) {
-                    Ok(a) => a,
-                    Err(_) => continue, // if it's just a file reset the loop
-                };
-            for package_dir in package_dirs {
-                let package_dir = package_dir.expect("intermittent IO error");
-                let package = package_dir.file_name().into_string().unwrap();
-                if package_dir.path().is_file() || package.starts_with(".") {
+            for category_entry in fs::read_dir(repo_path).expect("repo path does not exist") {
+                let category_path = category_entry.expect("intermittent IO error").path();
+                let category = category_path.clone();
+                let category = category.file_name().unwrap().to_string_lossy();
+                if category_path.is_file() || category.starts_with(".") {
                     continue;
+                }
+
+                for package_entry in fs::read_dir(category_path).expect("category path does not exist") {
+                    let package_path = package_entry.expect("intermittent IO error").path();
+                    let package = package_path.clone();
+                    let package = package.file_name().unwrap().to_string_lossy();
+                    if package_path.is_file() || package.starts_with(".") {
+                        continue;
+                    }
+
+                    for file_entry in fs::read_dir(package_path).unwrap() {
+                        let file_path = file_entry.expect("intermittent IO error").path();
+                        let file_string = file_path.file_name().unwrap().to_string_lossy();
+                        if file_string.ends_with(".ebuild") {
+                            let regex = Regex::new(r".*-(\d.*).ebuild").unwrap();
+                            let version = &regex.captures(&file_string).unwrap()[1];
+                            csv_string.push_str(&category);
+                            csv_string.push_str(",");
+                            csv_string.push_str(&package);
+                            csv_string.push_str(",");
+                            csv_string.push_str(version);
+                            csv_string.push_str(",");
+                            csv_string.push_str(&file_path.to_str().unwrap());
+                            csv_string.push_str("\n");
+                        }
+                    }
                 }
             }
         }
+        csv_string.pop(); // pop out the last unneeded new line character
+        let mut ebuilds_csv = fs::File::create("./target/debug/portix_ebuilds.csv").expect("failed to create portix_ebuilds.csv file");
+        ebuilds_csv.write_all(&mut csv_string.as_bytes()).expect("failed to write to portix_ebuilds.csv file");
+
+        self.execute_batch("CREATE VIRTUAL TABLE ebuilds_vtab
+                            USING csv('./target/debug/portix_ebuilds.csv', category, name, version, ebuild_path);
+                            CREATE TABLE ebuilds AS SELECT * FROM ebuilds_vtab;
+                            DROP TABLE ebuilds_vtab;").unwrap();
     }
 }

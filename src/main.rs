@@ -22,14 +22,18 @@ fn main() {
                     Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap()
             }
             else {
-                    let conn = Connection::open("./target/debug/portix.db").unwrap();
-                    println!("(1/2) Loading packages into database...");
-                    conn.parse_for_pkgs();
-                    println!("Done");
-                    println!("(2/2) Loading sets into database...");
-                    conn.parse_for_sets();
-                    println!("Done");
-                    conn
+                let conn = Connection::open("./target/debug/portix.db").unwrap();
+                rusqlite::vtab::csvtab::load_module(&conn).unwrap();
+                println!("(1/3) Loading package info into database...");
+                conn.parse_for_pkgs();
+                println!("Done");
+                println!("(2/3) Loading portage set info into database...");
+                conn.parse_for_sets();
+                println!("Done");
+                println!("(3/3) Loading ebuild info into database...");
+                conn.parse_for_ebuilds();
+                println!("Done");
+                conn
             }
         });
 
@@ -86,7 +90,6 @@ fn main() {
 
     let column_category = make_tree_view_column("Categories", 0);
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
-
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
     let conn = child.join().unwrap();

@@ -93,26 +93,20 @@ impl PortixConnection for Connection {
         recommended_packages_csv.write_all(recommended_packages_output.as_bytes()).expect("failed to read recommended packages output into file");
 
         rusqlite::vtab::csvtab::load_module(&self).unwrap();
-        self.execute("CREATE VIRTUAL TABLE all_packages_vtab
-                      USING csv('./target/debug/portix_all_packages.csv', category, name, version, description)", &[]).unwrap();
-        self.execute("CREATE TABLE all_packages
-                      AS SELECT *
-                      FROM all_packages_vtab", &[]).unwrap();
-        self.execute_batch("DROP TABLE all_packages_vtab").unwrap();
+        self.execute_batch("CREATE VIRTUAL TABLE all_packages_vtab
+                            USING csv('./target/debug/portix_all_packages.csv', category, name, version, description);
+                            CREATE TABLE all_packages AS SELECT * FROM all_packages_vtab;
+                            DROP TABLE all_packages_vtab;
 
-        self.execute("CREATE VIRTUAL TABLE installed_packages_vtab
-                      USING csv('./target/debug/portix_installed_packages.csv', category, name, version)", &[]).unwrap();
-        self.execute("CREATE TABLE installed_packages
-                      AS SELECT *
-                      FROM installed_packages_vtab", &[]).unwrap();
-        self.execute_batch("DROP TABLE installed_packages_vtab").unwrap();
+                            CREATE VIRTUAL TABLE installed_packages_vtab
+                            USING csv('./target/debug/portix_installed_packages.csv', category, name, version);
+                            CREATE TABLE installed_packages AS SELECT * FROM installed_packages_vtab;
+                            DROP TABLE installed_packages_vtab;
 
-        self.execute("CREATE VIRTUAL TABLE recommended_packages_vtab
-                      USING csv('./target/debug/portix_recommended_packages.csv', category, name, version)", &[]).unwrap();
-        self.execute("CREATE TABLE recommended_packages
-                      AS SELECT *
-                      FROM recommended_packages_vtab", &[]).unwrap();
-        self.execute_batch("DROP TABLE recommended_packages_vtab").unwrap();
+                            CREATE VIRTUAL TABLE recommended_packages_vtab
+                            USING csv('./target/debug/portix_recommended_packages.csv', category, name, version);
+                            CREATE TABLE recommended_packages AS SELECT * FROM recommended_packages_vtab;
+                            DROP TABLE recommended_packages_vtab;").unwrap();
 
 
 

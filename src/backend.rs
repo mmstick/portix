@@ -98,20 +98,24 @@ impl PortixConnection for Connection {
 
         self.execute_batch("CREATE VIRTUAL TABLE all_packages_vtab
                             USING csv('./target/debug/portix_all_packages.csv', category, name, version, description);
-                            CREATE TABLE all_packages AS SELECT * FROM all_packages_vtab;
+                            CREATE TABLE IF NOT EXISTS all_packages AS SELECT * FROM all_packages_vtab;
                             DROP TABLE all_packages_vtab;
 
                             CREATE VIRTUAL TABLE installed_packages_vtab
                             USING csv('./target/debug/portix_installed_packages.csv', category, name, version);
-                            CREATE TABLE installed_packages AS SELECT * FROM installed_packages_vtab;
+                            CREATE TABLE IF NOT EXISTS installed_packages AS SELECT * FROM installed_packages_vtab;
                             DROP TABLE installed_packages_vtab;
 
                             CREATE VIRTUAL TABLE recommended_packages_vtab
                             USING csv('./target/debug/portix_recommended_packages.csv', category, name, version);
-                            CREATE TABLE recommended_packages AS SELECT * FROM recommended_packages_vtab;
+                            CREATE TABLE IF NOT EXISTS recommended_packages AS SELECT * FROM recommended_packages_vtab;
                             DROP TABLE recommended_packages_vtab;").unwrap();
-
-
+        fs::remove_file("./target/debug/portix_all_packages.csv")
+            .expect("failed to remove portix_all_packages.csv file due to lack of permissions");
+        fs::remove_file("./target/debug/portix_installed_packages.csv")
+            .expect("failed to remove portix_installed_packages.csv file due to lack of permissions");
+        fs::remove_file("./target/debug/portix_recommended_packages.csv")
+            .expect("failed to remove portix_recommended_packages.csv file due to lack of permissions");
 
         //let global_keywords = child_global_keywords.join().unwrap();
         //let arch_list = child_arch_list.join().unwrap();
@@ -172,7 +176,7 @@ impl PortixConnection for Connection {
     }
 
     fn parse_for_sets(&self) {
-        self.execute("CREATE TABLE portage_sets (
+        self.execute("CREATE TABLE IF NOT EXISTS portage_sets (
                       portage_set       TEXT,
                       category_and_name TEXT,
                       category          TEXT,
@@ -265,7 +269,9 @@ impl PortixConnection for Connection {
 
         self.execute_batch("CREATE VIRTUAL TABLE ebuilds_vtab
                             USING csv('./target/debug/portix_ebuilds.csv', category, name, version, ebuild_path);
-                            CREATE TABLE ebuilds AS SELECT * FROM ebuilds_vtab;
+                            CREATE TABLE IF NOT EXISTS ebuilds AS SELECT * FROM ebuilds_vtab;
                             DROP TABLE ebuilds_vtab;").unwrap();
+        fs::remove_file("./target/debug/portix_ebuilds.csv")
+            .expect("failed to remove portix_ebuilds.csv file due to lack of permissions");
     }
 }

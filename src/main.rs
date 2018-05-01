@@ -23,8 +23,12 @@ fn main() {
             }
             else {
                     let conn = Connection::open("./target/debug/portix.db").unwrap();
+                    println!("(1/2) Loading packages into database...");
                     conn.parse_for_pkgs();
+                    println!("Done");
+                    println!("(2/2) Loading sets into database...");
                     conn.parse_for_sets();
+                    println!("Done");
                     conn
             }
         });

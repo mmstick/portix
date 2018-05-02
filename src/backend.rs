@@ -10,6 +10,8 @@ use std::io::prelude::*;
 use std::process::Command;
 use std::thread;
 
+pub const DB_PATH: &str = "./target/debug/portix.db";
+
 pub trait PortixConnection {
     fn parse_for_pkgs(&self);
     fn parse_for_sets(&self);
@@ -96,20 +98,24 @@ impl PortixConnection for Connection {
         installed_packages_csv.write_all(installed_packages_output.as_bytes()).expect("failed to write installed packages output into file");
         recommended_packages_csv.write_all(recommended_packages_output.as_bytes()).expect("failed to write recommended packages output into file");
 
-        self.execute_batch("CREATE VIRTUAL TABLE all_packages_vtab
+        self.execute_batch("DROP TABLE IF EXISTS all_packages;
+                            CREATE VIRTUAL TABLE all_packages_vtab
                             USING csv('./target/debug/portix_all_packages.csv', category, name, version, description);
-                            CREATE TABLE IF NOT EXISTS all_packages AS SELECT * FROM all_packages_vtab;
+                            CREATE TABLE all_packages AS SELECT * FROM all_packages_vtab;
                             DROP TABLE all_packages_vtab;
 
+                            DROP TABLE IF EXISTS installed_packages;
                             CREATE VIRTUAL TABLE installed_packages_vtab
                             USING csv('./target/debug/portix_installed_packages.csv', category, name, version);
-                            CREATE TABLE IF NOT EXISTS installed_packages AS SELECT * FROM installed_packages_vtab;
+                            CREATE TABLE installed_packages AS SELECT * FROM installed_packages_vtab;
                             DROP TABLE installed_packages_vtab;
 
+                            DROP TABLE IF EXISTS recommended_packages;
                             CREATE VIRTUAL TABLE recommended_packages_vtab
                             USING csv('./target/debug/portix_recommended_packages.csv', category, name, version);
-                            CREATE TABLE IF NOT EXISTS recommended_packages AS SELECT * FROM recommended_packages_vtab;
+                            CREATE TABLE recommended_packages AS SELECT * FROM recommended_packages_vtab;
                             DROP TABLE recommended_packages_vtab;").unwrap();
+
         fs::remove_file("./target/debug/portix_all_packages.csv")
             .expect("failed to remove portix_all_packages.csv file due to lack of permissions");
         fs::remove_file("./target/debug/portix_installed_packages.csv")
@@ -176,12 +182,13 @@ impl PortixConnection for Connection {
     }
 
     fn parse_for_sets(&self) {
-        self.execute("CREATE TABLE IF NOT EXISTS portage_sets (
-                      portage_set       TEXT,
-                      category_and_name TEXT,
-                      category          TEXT,
-                      name              TEXT
-                      )", &[]).unwrap();
+        self.execute_batch("DROP TABLE IF EXISTS portage_sets;
+                            CREATE TABLE portage_sets (
+                            portage_set       TEXT,
+                            category_and_name TEXT,
+                            category          TEXT,
+                            name              TEXT
+                            );").unwrap();
         for set in fs::read_dir("/etc/portage/sets").expect("failed to find /etc/portage/sets directory") {
             let set = set.expect("intermittent IO error");
             use ::std::io::BufRead;
@@ -267,10 +274,12 @@ impl PortixConnection for Connection {
         let mut ebuilds_csv = fs::File::create("./target/debug/portix_ebuilds.csv").expect("failed to create portix_ebuilds.csv file");
         ebuilds_csv.write_all(&mut csv_string.as_bytes()).expect("failed to write to portix_ebuilds.csv file");
 
-        self.execute_batch("CREATE VIRTUAL TABLE ebuilds_vtab
+        self.execute_batch("DROP TABLE IF EXISTS ebuilds;
+                            CREATE VIRTUAL TABLE ebuilds_vtab
                             USING csv('./target/debug/portix_ebuilds.csv', category, name, version, ebuild_path);
-                            CREATE TABLE IF NOT EXISTS ebuilds AS SELECT * FROM ebuilds_vtab;
+                            CREATE TABLE ebuilds AS SELECT * FROM ebuilds_vtab;
                             DROP TABLE ebuilds_vtab;").unwrap();
+
         fs::remove_file("./target/debug/portix_ebuilds.csv")
             .expect("failed to remove portix_ebuilds.csv file due to lack of permissions");
     }

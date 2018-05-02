@@ -1,7 +1,7 @@
 extern crate gtk;
 extern crate rusqlite;
 
-use std::path::Path;
+//use std::path::Path;
 use std::thread;
 
 use backend::PortixConnection;
@@ -18,23 +18,18 @@ fn main() {
         println!("failed to initialize GTK.");
     }
     let child = thread::spawn(move || {
-            if Path::new("./target/debug/portix.db").exists() {
-                    Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap()
-            }
-            else {
-                let conn = Connection::open("./target/debug/portix.db").unwrap();
-                rusqlite::vtab::csvtab::load_module(&conn).unwrap();
-                println!("(1/3) Loading package info into database...");
-                conn.parse_for_pkgs();
-                println!("Done");
-                println!("(2/3) Loading portage set info into database...");
-                conn.parse_for_sets();
-                println!("Done");
-                println!("(3/3) Loading ebuild info into database...");
-                conn.parse_for_ebuilds();
-                println!("Done");
-                conn
-            }
+            let conn = Connection::open(backend::DB_PATH).unwrap();
+            rusqlite::vtab::csvtab::load_module(&conn).unwrap();
+            println!("(1/3) Loading package info into database...");
+            conn.parse_for_pkgs();
+            println!("Done");
+            println!("(2/3) Loading portage set info into database...");
+            conn.parse_for_sets();
+            println!("Done");
+            println!("(3/3) Loading ebuild info into database...");
+            conn.parse_for_ebuilds();
+            println!("Done");
+            conn
         });
 
     let menubar = gtk::MenuBar::new();

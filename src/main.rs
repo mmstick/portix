@@ -1,15 +1,17 @@
 extern crate gtk;
+//extern crate glib;
 extern crate rusqlite;
 
-//use std::path::Path;
 use std::thread;
 use std::fs;
 use std::io::Read;
+use std::rc::Rc;
 
 use backend::PortixConnection;
 
 use gtk::prelude::*;
 use gtk::{Window, WindowType};
+//use glib::signal::{signal_handler_block, signal_handler_unblock};
 
 use rusqlite::Connection;
 
@@ -106,7 +108,7 @@ fn main() {
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
-    let conn = child.join().unwrap();
+    let conn = Rc::new(child.join().unwrap());
     let mut statement = conn.prepare("SELECT category, count(DISTINCT name) as pkg_count
                                       FROM all_packages
                                       GROUP BY category").expect("sql cannot be converted to a C string");
@@ -178,7 +180,7 @@ fn main() {
     window.add(&vbox);
     window.show_all();
 
-    let conn_clone = Connection::open_with_flags(backend::DB_PATH, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let conn_clone = conn.clone();
     let tree_view_pkgs_clone = tree_view_pkgs.clone();
     combo_box.connect_changed(move |combo_box| {
         model_category.clear();
@@ -213,14 +215,13 @@ fn main() {
         }
     });
 
-    let conn_clone = Connection::open_with_flags(backend::DB_PATH, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let conn_clone = conn.clone();
     let combo_box_clone = combo_box.clone();
     let tree_view_pkgs_clone = tree_view_pkgs.clone();
     tree_view_category.get_selection().connect_changed(move |selected_category| {
         model_pkg_list.clear();
         tree_view_pkgs_clone.get_selection().unselect_all();
         selected_category.set_mode(gtk::SelectionMode::Single);
-        println!("It outputs here");
 
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
@@ -305,14 +306,13 @@ fn main() {
         }
     });
 
-    let conn_clone = Connection::open_with_flags(backend::DB_PATH, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let conn_clone = conn.clone();
     tree_view_pkgs.get_selection().connect_changed(move |selected_pkg| {
         selected_pkg.set_mode(gtk::SelectionMode::Single);
 
         if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
             if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
-                //println!("{:?}", selected);
                 let selection = if entry == "Sets" {
                     let split: Vec<&str> = selected.split('/').collect();
                     format!("SELECT ebuild_path

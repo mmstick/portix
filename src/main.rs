@@ -17,19 +17,36 @@ fn main() {
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
+
+    fn loading_tables(conn: Connection) -> Connection {
+        println!("(1/4) Storing repo hash info into database...");
+        conn.store_repo_hashes();
+        println!("Done");
+        println!("(2/4) Loading package info into database...");
+        conn.parse_for_pkgs();
+        println!("Done");
+        println!("(3/4) Loading portage set info into database...");
+        conn.parse_for_sets();
+        println!("Done");
+        println!("(4/4) Loading ebuild info into database...");
+        conn.parse_for_ebuilds();
+        println!("Done");
+        conn
+    }
+
+    let conn = Connection::open(backend::DB_PATH).unwrap();
+    rusqlite::vtab::csvtab::load_module(&conn).unwrap();
     let child = thread::spawn(move || {
-            let conn = Connection::open(backend::DB_PATH).unwrap();
-            rusqlite::vtab::csvtab::load_module(&conn).unwrap();
-            println!("(1/3) Loading package info into database...");
-            conn.parse_for_pkgs();
-            println!("Done");
-            println!("(2/3) Loading portage set info into database...");
-            conn.parse_for_sets();
-            println!("Done");
-            println!("(3/3) Loading ebuild info into database...");
-            conn.parse_for_ebuilds();
-            println!("Done");
-            conn
+            if !conn.tables_exist() {
+                loading_tables(conn)
+            }
+            else if conn.tables_need_reloading() {
+                println!("*Database needs reloading again*");
+                loading_tables(conn)
+            }
+            else {
+                conn
+            }
         });
 
     let menubar = gtk::MenuBar::new();
@@ -275,14 +292,17 @@ fn main() {
         }
     });
 
-    //tree_view_pkgs.get_selection().connect_changed(move |selected_pkg| {
-    //    selected_pkg.set_mode(gtk::SelectionMode::Single);
+    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    tree_view_pkgs.get_selection().connect_changed(move |selected_pkg| {
+        selected_pkg.set_mode(gtk::SelectionMode::Single);
 
-    //    if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
-    //        if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
-    //        }
-    //    }
-    //});
+        if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
+            if let Some(_selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
+                let mut statement = conn_clone.prepare("").expect("sql cannot be converted to a C string");
+                let mut _query = statement.query(&[]).expect("failed to query database");
+            }
+        }
+    });
 
     window.connect_delete_event(|_, _| {
         gtk::main_quit();

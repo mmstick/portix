@@ -16,6 +16,9 @@ pub trait PortixConnection {
     fn parse_for_pkgs(&self);
     fn parse_for_sets(&self);
     fn parse_for_ebuilds(&self);
+    fn store_repo_hashes(&self);
+    fn tables_need_reloading(&self) -> bool;
+    fn tables_exist(&self) -> bool;
 }
 
 impl PortixConnection for Connection {
@@ -283,4 +286,102 @@ impl PortixConnection for Connection {
         fs::remove_file("./target/debug/portix_ebuilds.csv")
             .expect("failed to remove portix_ebuilds.csv file due to lack of permissions");
     }
+
+    fn store_repo_hashes(&self) {
+        self.execute_batch("DROP TABLE IF EXISTS repo_hashes;
+                            CREATE TABLE repo_hashes (
+                            uri  TEXT,
+                            head_hash TEXT
+                            );").unwrap();
+        let output = String::from_utf8(
+            Command::new("sh")
+                .arg("-c")
+                .arg("emerge --info")
+                .output()
+                .expect("failed to get emerge --info output")
+                .stdout
+            ).expect("emerge --info output is not UTF-8 compatible");
+
+        for line in output.lines() {
+            let line = line.trim();
+            const SYNC_URI: &str = "sync-uri: ";
+            if line.starts_with(SYNC_URI) {
+                let uri = &line[SYNC_URI.len()..line.len()];
+                let git_ls_remote_output = get_git_ls_remote_output(uri);
+                let mut git_head_hash = "";
+
+                for git_hash_line in git_ls_remote_output.lines() {
+                    let hash_split: Vec<&str> = git_hash_line.split('\t').collect();
+                    if hash_split[1] == "HEAD" {
+                        git_head_hash = hash_split[0];
+                        break;
+                    }
+                }
+                self.execute("INSERT INTO repo_hashes (uri, head_hash)
+                              VALUES (?1, ?2)",
+                              &[&uri, &git_head_hash]).expect("failed to insert data into repo_hashes table");
+            }
+        }
+    }
+
+    fn tables_need_reloading(&self) -> bool {
+        let mut statement = self.prepare("SELECT uri, head_hash FROM repo_hashes").expect("sql cannot be converted to a C string");
+        let mut rows = statement.query(&[]).expect("failed to query database");
+
+        while let Some(Ok(row)) = rows.next() {
+            let uri = row.get::<_, String>(0);
+            let previous_head_hash = row.get::<_, String>(1);
+            let git_ls_remote_output = get_git_ls_remote_output(&uri);
+
+            for git_hash_line in git_ls_remote_output.lines() {
+                let hash_split: Vec<&str> = git_hash_line.split('\t').collect();
+                if hash_split[1] == "HEAD" && hash_split[0] != previous_head_hash {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn tables_exist(&self) -> bool {
+        let mut statement = self.prepare("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'all_packages'").expect("sql cannot be converted to a C string");
+        let mut query_all_packages = statement.query(&[]).expect("failed to query database");
+
+        let mut statement = self.prepare("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'installed_packages'").expect("sql cannot be converted to a C string");
+        let mut query_installed_packages = statement.query(&[]).expect("failed to query database");
+
+        let mut statement = self.prepare("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'recommended_packages'").expect("sql cannot be converted to a C string");
+        let mut query_recommended_packages = statement.query(&[]).expect("failed to query database");
+
+        let mut statement = self.prepare("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'portage_sets'").expect("sql cannot be converted to a C string");
+        let mut query_portage_sets = statement.query(&[]).expect("failed to query database");
+
+        let mut statement = self.prepare("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'ebuilds'").expect("sql cannot be converted to a C string");
+        let mut query_ebuilds = statement.query(&[]).expect("failed to query database");
+
+        let mut statement = self.prepare("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'repo_hashes'").expect("sql cannot be converted to a C string");
+        let mut query_repo_hashes = statement.query(&[]).expect("failed to query database");
+
+        if query_all_packages.next().unwrap().unwrap().get::<_, i32>(0) == 1 &&
+           query_installed_packages.next().unwrap().unwrap().get::<_, i32>(0) == 1 &&
+           query_recommended_packages.next().unwrap().unwrap().get::<_, i32>(0) == 1 &&
+           query_portage_sets.next().unwrap().unwrap().get::<_, i32>(0) == 1 &&
+           query_ebuilds.next().unwrap().unwrap().get::<_, i32>(0) == 1 &&
+           query_repo_hashes.next().unwrap().unwrap().get::<_, i32>(0) == 1 {
+               return true;
+        }
+        false
+    }
+}
+
+fn get_git_ls_remote_output(uri: &str) -> String {
+    String::from_utf8(
+        Command::new("sh")
+            .arg("-c")
+            .arg(&format!("git ls-remote {}", uri))
+            .output()
+            .expect("failed to get git ls-remote output")
+            .stdout
+        ).expect("git ls-remote output is not UTF-8 compatible")
 }

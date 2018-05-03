@@ -290,57 +290,59 @@ impl PortixConnection for Connection {
     fn store_repo_hashes(&self) {
         self.execute_batch("DROP TABLE IF EXISTS repo_hashes;
                             CREATE TABLE repo_hashes (
-                            uri  TEXT,
+                            repo_path  TEXT,
                             head_hash TEXT
                             );").unwrap();
-        let output = String::from_utf8(
-            Command::new("sh")
+
+        let repos = String::from_utf8(Command::new("sh")
                 .arg("-c")
-                .arg("emerge --info")
+                .arg("portageq get_repos /")
                 .output()
-                .expect("failed to get emerge --info output")
+                .expect("failed to get repos list")
                 .stdout
-            ).expect("emerge --info output is not UTF-8 compatible");
+            ).expect("repo names are not UTF-8 compatible");
+        let repos: Vec<_> = repos.trim().split(' ').collect();
 
-        for line in output.lines() {
-            let line = line.trim();
-            const SYNC_URI: &str = "sync-uri: ";
-            if line.starts_with(SYNC_URI) {
-                let uri = &line[SYNC_URI.len()..line.len()];
-                let git_ls_remote_output = get_git_ls_remote_output(uri);
-                let mut git_head_hash = "";
-
-                for git_hash_line in git_ls_remote_output.lines() {
-                    let hash_split: Vec<&str> = git_hash_line.split('\t').collect();
-                    if hash_split[1] == "HEAD" {
-                        git_head_hash = hash_split[0];
-                        break;
+        for repo in repos.into_iter() {
+            let repo_path = String::from_utf8(Command::new("sh")
+                    .arg("-c")
+                    .arg(format!("portageq get_repo_path / {}", repo))
+                    .output()
+                    .expect("failed to find repo path")
+                    .stdout
+                ).expect("repo path is not UTF-8 compatible");
+            let repo_path = repo_path.trim();
+            let git_head_hash = String::from_utf8(
+                    match Command::new("sh").arg("-c").arg("git rev-parse @").current_dir(repo_path).output() {
+                        Ok(a) => a.stdout,
+                        Err(_) => continue,
                     }
-                }
-                self.execute("INSERT INTO repo_hashes (uri, head_hash)
-                              VALUES (?1, ?2)",
-                              &[&uri, &git_head_hash]).expect("failed to insert data into repo_hashes table");
-            }
+                ).expect("repo hash is not UTF-8 compatible");
+
+            self.execute("INSERT INTO repo_hashes (repo_path, head_hash)
+                          VALUES (?1, ?2)",
+                          &[&repo_path, &git_head_hash.trim()]).expect("failed to insert data into repo_hashes table");
         }
     }
 
     fn tables_need_reloading(&self) -> bool {
-        let mut statement = self.prepare("SELECT uri, head_hash FROM repo_hashes").expect("sql cannot be converted to a C string");
+        let mut statement = self.prepare("SELECT repo_path, head_hash FROM repo_hashes").expect("sql cannot be converted to a C string");
         let mut rows = statement.query(&[]).expect("failed to query database");
 
         while let Some(Ok(row)) = rows.next() {
-            let uri = row.get::<_, String>(0);
+            let repo_path = row.get::<_, String>(0);
             let previous_head_hash = row.get::<_, String>(1);
-            let git_ls_remote_output = get_git_ls_remote_output(&uri);
 
-            for git_hash_line in git_ls_remote_output.lines() {
-                let hash_split: Vec<&str> = git_hash_line.split('\t').collect();
-                if hash_split[1] == "HEAD" && hash_split[0] != previous_head_hash {
-                    return true;
-                }
+            let new_head_hash = String::from_utf8(
+                    match Command::new("sh").arg("-c").arg("git rev-parse @").current_dir(repo_path).output() {
+                        Ok(a) => a.stdout,
+                        Err(_) => continue,
+                    }
+                ).expect("repo hash is not UTF-8 compatible");
+            if previous_head_hash != new_head_hash.trim() {
+                return true;
             }
         }
-
         false
     }
 
@@ -373,15 +375,4 @@ impl PortixConnection for Connection {
         }
         false
     }
-}
-
-fn get_git_ls_remote_output(uri: &str) -> String {
-    String::from_utf8(
-        Command::new("sh")
-            .arg("-c")
-            .arg(&format!("git ls-remote {}", uri))
-            .output()
-            .expect("failed to get git ls-remote output")
-            .stdout
-        ).expect("git ls-remote output is not UTF-8 compatible")
 }

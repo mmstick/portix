@@ -3,6 +3,8 @@ extern crate rusqlite;
 
 //use std::path::Path;
 use std::thread;
+use std::fs;
+use std::io::Read;
 
 use backend::PortixConnection;
 
@@ -146,8 +148,16 @@ fn main() {
 
     let notebook = gtk::Notebook::new();
     let notebook_labels = ["Summary", "Dependencies", "Changelog", "Installed files", "Ebuild", "USE flags"];
-    for &label in notebook_labels.iter() {
-        notebook.append_page(&gtk::ScrolledWindow::new(None, None), Some(&gtk::Label::new(label)));
+    let notebook_buffers = [gtk::TextBuffer::new(&gtk::TextTagTable::new()),
+                            gtk::TextBuffer::new(&gtk::TextTagTable::new()),
+                            gtk::TextBuffer::new(&gtk::TextTagTable::new()),
+                            gtk::TextBuffer::new(&gtk::TextTagTable::new()),
+                            gtk::TextBuffer::new(&gtk::TextTagTable::new()), 
+                            gtk::TextBuffer::new(&gtk::TextTagTable::new())];
+    for (&label, buffer) in notebook_labels.iter().zip(notebook_buffers.iter()) {
+        let scrolled_window = gtk::ScrolledWindow::new(None, None);
+        scrolled_window.add(&gtk::TextView::new_with_buffer(buffer));
+        notebook.append_page(&scrolled_window, Some(&gtk::Label::new(label)));
     }
 
     let paned_everything = gtk::Paned::new(gtk::Orientation::Vertical);
@@ -168,10 +178,12 @@ fn main() {
     window.add(&vbox);
     window.show_all();
 
-    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let conn_clone = Connection::open_with_flags(backend::DB_PATH, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let tree_view_pkgs_clone = tree_view_pkgs.clone();
     combo_box.connect_changed(move |combo_box| {
+        model_category.clear();
+        tree_view_pkgs_clone.get_selection().unselect_all();
         if let Some(entry) = combo_box.get_active_text() {
-            model_category.clear();
             let selection = if entry == "Installed Packages" {
                     "SELECT category, count(DISTINCT name) as pkg_count
                      FROM installed_packages
@@ -201,14 +213,18 @@ fn main() {
         }
     });
 
-    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let conn_clone = Connection::open_with_flags(backend::DB_PATH, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let combo_box_clone = combo_box.clone();
+    let tree_view_pkgs_clone = tree_view_pkgs.clone();
     tree_view_category.get_selection().connect_changed(move |selected_category| {
         model_pkg_list.clear();
+        tree_view_pkgs_clone.get_selection().unselect_all();
         selected_category.set_mode(gtk::SelectionMode::Single);
+        println!("It outputs here");
 
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
-                let entry = combo_box.get_active_text().unwrap_or("".to_string());
+                let entry = combo_box_clone.get_active_text().unwrap_or("".to_string());
                 let selection = if entry == "Installed Packages"{
                         format!(r#"SELECT installed_packages.name AS package_name,
                                    IFNULL(installed_packages.version, "") AS installed_version,
@@ -282,24 +298,40 @@ fn main() {
                     };
                 let mut statement = conn_clone.prepare(&selection).expect("sql cannot be converted to a C string");
                 let mut pkg_rows = statement.query(&[]).expect("failed to query database");
-                let mut i = 0;
                 while let Some(Ok(row)) = pkg_rows.next() {
-                    let tree_iter_pkgs = model_pkg_list.insert(i as i32);
-                    model_pkg_list.set(&tree_iter_pkgs, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
-                    i += 1;
+                    model_pkg_list.insert_with_values(None, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
                 }
             }
         }
     });
 
-    let conn_clone = Connection::open_with_flags("./target/debug/portix.db", rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+    let conn_clone = Connection::open_with_flags(backend::DB_PATH, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
     tree_view_pkgs.get_selection().connect_changed(move |selected_pkg| {
         selected_pkg.set_mode(gtk::SelectionMode::Single);
 
         if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
-            if let Some(_selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
-                let mut statement = conn_clone.prepare("").expect("sql cannot be converted to a C string");
-                let mut _query = statement.query(&[]).expect("failed to query database");
+            if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
+                let entry = combo_box.get_active_text().unwrap_or("".to_string());
+                //println!("{:?}", selected);
+                let selection = if entry == "Sets" {
+                    let split: Vec<&str> = selected.split('/').collect();
+                    format!("SELECT ebuild_path
+                             FROM ebuilds
+                             WHERE ebuilds.name = '{}'", split.get(1).expect("failed to split item in sets view"))
+                }
+                else {
+                    format!("SELECT ebuild_path
+                             FROM ebuilds
+                             WHERE ebuilds.name = '{}'", selected)
+                };
+                let mut statement = conn_clone.prepare(&selection).expect("sql cannot be converted to a C string");
+                let mut queries = statement.query(&[]).expect("failed to query database");
+                if let Some(Ok(query)) = queries.next() {
+                    let mut ebuild_text = String::new();
+                    let mut ebuild_file = fs::File::open(query.get::<_, String>(0)).unwrap();
+                    ebuild_file.read_to_string(&mut ebuild_text);
+                    notebook_buffers[4].set_text(&ebuild_text);
+                }
             }
         }
     });

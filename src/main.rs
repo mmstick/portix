@@ -149,9 +149,8 @@ fn main() {
     paned_category_pkg.set_hexpand(true);
 
     let notebook = gtk::Notebook::new();
-    let notebook_labels = ["Summary", "Dependencies", "Changelog", "Installed files", "Ebuild", "USE flags"];
+    let notebook_labels = ["Summary", "Dependencies", "Installed files", "Ebuild", "USE flags"];
     let notebook_buffers = [gtk::TextBuffer::new(&gtk::TextTagTable::new()),
-                            gtk::TextBuffer::new(&gtk::TextTagTable::new()),
                             gtk::TextBuffer::new(&gtk::TextTagTable::new()),
                             gtk::TextBuffer::new(&gtk::TextTagTable::new()),
                             gtk::TextBuffer::new(&gtk::TextTagTable::new()), 
@@ -330,7 +329,7 @@ fn main() {
                     let mut ebuild_text = String::new();
                     let mut ebuild_file = fs::File::open(query.get::<_, String>(0)).unwrap();
                     ebuild_file.read_to_string(&mut ebuild_text);
-                    notebook_buffers[4].set_text(&ebuild_text);
+                    notebook_buffers[3].set_text(&ebuild_text);
                 }
             }
         }

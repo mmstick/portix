@@ -3,8 +3,6 @@ extern crate gtk;
 extern crate rusqlite;
 
 use std::thread;
-use std::fs;
-use std::io::Read;
 use std::rc::Rc;
 
 use backend::PortixConnection;
@@ -312,25 +310,32 @@ fn main() {
         if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
             if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
-                let selection = if entry == "Sets" {
-                    let split: Vec<&str> = selected.split('/').collect();
-                    format!("SELECT ebuild_path
-                             FROM ebuilds
-                             WHERE ebuilds.name = '{}'", split.get(1).expect("failed to split item in sets view"))
+
+                match notebook.get_current_page() {
+                    Some(page) if page == 2 => {}
+                    Some(page) if page == 3 => {
+                        let query = if entry == "Sets" {
+                            let split: Vec<&str> = selected.split('/').collect();
+                            format!("SELECT ebuild_path
+                                     FROM ebuilds
+                                     WHERE ebuilds.name = '{}'",
+                                         match split.get(1) {
+                                             Some(a) => a,
+                                             None => return,
+                                         }
+                                   )
+                        }
+                        else {
+                            format!("SELECT ebuild_path
+                                     FROM ebuilds
+                                     WHERE ebuilds.name = '{}'", selected)
+                        };
+                        notebook_buffers[page as usize].set_text(&conn_clone.query_ebuild(&query));
+
+                    }
+                    _ => return,
                 }
-                else {
-                    format!("SELECT ebuild_path
-                             FROM ebuilds
-                             WHERE ebuilds.name = '{}'", selected)
-                };
-                let mut statement = conn_clone.prepare(&selection).expect("sql cannot be converted to a C string");
-                let mut queries = statement.query(&[]).expect("failed to query database");
-                if let Some(Ok(query)) = queries.next() {
-                    let mut ebuild_text = String::new();
-                    let mut ebuild_file = fs::File::open(query.get::<_, String>(0)).unwrap();
-                    ebuild_file.read_to_string(&mut ebuild_text);
-                    notebook_buffers[3].set_text(&ebuild_text);
-                }
+
             }
         }
     });

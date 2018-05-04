@@ -16,6 +16,7 @@ pub trait PortixConnection {
     fn parse_for_pkgs(&self);
     fn parse_for_sets(&self);
     fn parse_for_ebuilds(&self);
+    fn query_ebuild(&self, query: &str) -> String;
     fn store_repo_hashes(&self);
     fn tables_need_reloading(&self) -> bool;
     fn tables_exist(&self) -> bool;
@@ -285,6 +286,20 @@ impl PortixConnection for Connection {
 
         fs::remove_file("./target/debug/portix_ebuilds.csv")
             .expect("failed to remove portix_ebuilds.csv file due to lack of permissions");
+    }
+
+    fn query_ebuild(&self, query: &str) -> String {
+        let mut statement = self.prepare(query).expect("sql cannot be converted to a C string");
+        let mut queries = statement.query(&[]).expect("failed to query database");
+        if let Some(Ok(query)) = queries.next() {
+            let mut ebuild_text = String::new();
+            let mut ebuild_file = fs::File::open(query.get::<_, String>(0)).unwrap();
+            ebuild_file.read_to_string(&mut ebuild_text).unwrap();
+            ebuild_text
+        }
+        else {
+            String::new()
+        }
     }
 
     fn store_repo_hashes(&self) {

@@ -183,26 +183,24 @@ fn main() {
         model_category.clear();
         tree_view_pkgs_clone.get_selection().unselect_all();
         if let Some(entry) = combo_box.get_active_text() {
-            let selection = if entry == "Installed Packages" {
+            let selection = match &*entry {
+                "Installed Packages" =>
                     "SELECT category, count(DISTINCT name) as pkg_count
                      FROM installed_packages
-                     GROUP BY category"
-                }
-                else if entry == "All Packages" {
+                     GROUP BY category",
+                "All Packages" =>
                     "SELECT category, count(DISTINCT name) as pkg_count
                      FROM all_packages
-                     GROUP BY category"
-                }
-                else if entry == "Sets" {
+                     GROUP BY category",
+                "Sets" =>
                     "SELECT portage_set, count(DISTINCT category_and_name) as pkg_count
                      FROM portage_sets
-                     GROUP BY portage_set"
-                }
-                else {
+                     GROUP BY portage_set",
+                _ =>
                     "SELECT category, count(DISTINCT name) as pkg_count
                      FROM all_packages
-                     GROUP BY category"
-                };
+                     GROUP BY category",
+            };
             let mut statement = conn_clone.prepare(selection).expect("sql cannot be converted to a C string");
             let mut rows = statement.query(&[]).expect("failed to query database");
 
@@ -223,77 +221,74 @@ fn main() {
         if let Some((tree_model_category, tree_iter_category)) = selected_category.get_selected() {
             if let Some(selected) = tree_model_category.get_value(&tree_iter_category, 0).get::<String>() {
                 let entry = combo_box_clone.get_active_text().unwrap_or("".to_string());
-                let selection = if entry == "Installed Packages"{
-                        format!(r#"SELECT installed_packages.name AS package_name,
-                                   IFNULL(installed_packages.version, "") AS installed_version,
-                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
-                                   all_packages.description AS description
-                                   FROM installed_packages
-                                   LEFT JOIN all_packages
-                                   ON installed_packages.category = all_packages.category
-                                   AND installed_packages.name = all_packages.name
-                                   LEFT JOIN recommended_packages
-                                   ON all_packages.category = recommended_packages.category
-                                   AND all_packages.name = recommended_packages.name
-                                   WHERE installed_packages.category LIKE '{}'
-                                   GROUP BY package_name
-                                   ORDER BY installed_packages.category ASC"#,
-                                   selected)
-                    }
-                    else if entry == "All Packages" {
-                        format!(r#"SELECT all_packages.name AS package_name,
-                                   IFNULL(installed_packages.version, "") AS installed_version,
-                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
-                                   all_packages.description AS description
-                                   FROM all_packages
-                                   LEFT JOIN installed_packages
-                                   ON all_packages.category = installed_packages.category
-                                   AND all_packages.name = installed_packages.name
-                                   LEFT JOIN recommended_packages
-                                   ON all_packages.category = recommended_packages.category
-                                   AND all_packages.name = recommended_packages.name
-                                   WHERE all_packages.category LIKE '{}'
-                                   GROUP BY package_name
-                                   ORDER BY all_packages.category ASC"#,
-                                   selected)
-                    }
-                    else if entry == "Sets" {
-                        format!(r#"SELECT portage_sets.category_and_name AS category_and_name,
-                                   IFNULL(installed_packages.version, "") AS installed_version,
-                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
-                                   all_packages.description AS description
-                                   FROM portage_sets
-                                   LEFT JOIN all_packages
-                                   ON portage_sets.category = all_packages.category
-                                   AND portage_sets.name = all_packages.name
-                                   LEFT JOIN installed_packages
-                                   ON portage_sets.category = installed_packages.category
-                                   AND portage_sets.name = installed_packages.name
-                                   LEFT JOIN recommended_packages
-                                   ON portage_sets.category = recommended_packages.category
-                                   AND portage_sets.name = recommended_packages.name
-                                   WHERE portage_sets.portage_set LIKE '{}'
-                                   GROUP BY category_and_name
-                                   ORDER BY portage_sets.portage_set ASC"#,
-                                   selected)
-                    }
-                    else {
-                        format!(r#"SELECT all_packages.name AS package_name,
-                                   IFNULL(installed_packages.version, "") AS installed_version,
-                                   IFNULL(recommended_packages.version, "Not available") AS recommended_version,
-                                   all_packages.description AS description
-                                   FROM all_packages
-                                   LEFT JOIN installed_packages
-                                   ON all_packages.category = installed_packages.category
-                                   AND all_packages.name = installed_packages.name
-                                   LEFT JOIN recommended_packages
-                                   ON all_packages.category = recommended_packages.category
-                                   AND all_packages.name = recommended_packages.name
-                                   WHERE all_packages.category LIKE '{}'
-                                   GROUP BY package_name
-                                   ORDER BY all_packages.category ASC"#,
-                                   selected)
-                    };
+                let selection = match &*entry {
+                    "Installed Packages" => format!(r#"SELECT installed_packages.name AS package_name,
+                                                       IFNULL(installed_packages.version, "") AS installed_version,
+                                                       IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                                       all_packages.description AS description
+                                                       FROM installed_packages
+                                                       LEFT JOIN all_packages
+                                                       ON installed_packages.category = all_packages.category
+                                                       AND installed_packages.name = all_packages.name
+                                                       LEFT JOIN recommended_packages
+                                                       ON all_packages.category = recommended_packages.category
+                                                       AND all_packages.name = recommended_packages.name
+                                                       WHERE installed_packages.category LIKE '{}'
+                                                       GROUP BY package_name
+                                                       ORDER BY installed_packages.category ASC"#,
+                                                       selected),
+
+                    "All Packages" => format!(r#"SELECT all_packages.name AS package_name,
+                                                 IFNULL(installed_packages.version, "") AS installed_version,
+                                                 IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                                 all_packages.description AS description
+                                                 FROM all_packages
+                                                 LEFT JOIN installed_packages
+                                                 ON all_packages.category = installed_packages.category
+                                                 AND all_packages.name = installed_packages.name
+                                                 LEFT JOIN recommended_packages
+                                                 ON all_packages.category = recommended_packages.category
+                                                 AND all_packages.name = recommended_packages.name
+                                                 WHERE all_packages.category LIKE '{}'
+                                                 GROUP BY package_name
+                                                 ORDER BY all_packages.category ASC"#,
+                                                 selected),
+
+                    "Sets" => format!(r#"SELECT portage_sets.category_and_name AS category_and_name,
+                                         IFNULL(installed_packages.version, "") AS installed_version,
+                                         IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                         all_packages.description AS description
+                                         FROM portage_sets
+                                         LEFT JOIN all_packages
+                                         ON portage_sets.category = all_packages.category
+                                         AND portage_sets.name = all_packages.name
+                                         LEFT JOIN installed_packages
+                                         ON portage_sets.category = installed_packages.category
+                                         AND portage_sets.name = installed_packages.name
+                                         LEFT JOIN recommended_packages
+                                         ON portage_sets.category = recommended_packages.category
+                                         AND portage_sets.name = recommended_packages.name
+                                         WHERE portage_sets.portage_set LIKE '{}'
+                                         GROUP BY category_and_name
+                                         ORDER BY portage_sets.portage_set ASC"#,
+                                         selected),
+
+                    _ => format!(r#"SELECT all_packages.name AS package_name,
+                                    IFNULL(installed_packages.version, "") AS installed_version,
+                                    IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                    all_packages.description AS description
+                                    FROM all_packages
+                                    LEFT JOIN installed_packages
+                                    ON all_packages.category = installed_packages.category
+                                    AND all_packages.name = installed_packages.name
+                                    LEFT JOIN recommended_packages
+                                    ON all_packages.category = recommended_packages.category
+                                    AND all_packages.name = recommended_packages.name
+                                    WHERE all_packages.category LIKE '{}'
+                                    GROUP BY package_name
+                                    ORDER BY all_packages.category ASC"#,
+                                    selected),
+                };
                 let mut statement = conn_clone.prepare(&selection).expect("sql cannot be converted to a C string");
                 let mut pkg_rows = statement.query(&[]).expect("failed to query database");
                 while let Some(Ok(row)) = pkg_rows.next() {

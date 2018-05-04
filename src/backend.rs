@@ -17,6 +17,7 @@ pub trait PortixConnection {
     fn parse_for_sets(&self);
     fn parse_for_ebuilds(&self);
     fn query_ebuild(&self, query: &str) -> String;
+    fn query_file_list(&self, package: &str) -> String;
     fn store_repo_hashes(&self);
     fn tables_need_reloading(&self) -> bool;
     fn tables_exist(&self) -> bool;
@@ -300,6 +301,16 @@ impl PortixConnection for Connection {
         else {
             String::new()
         }
+    }
+
+    fn query_file_list(&self, package: &str) -> String {
+        String::from_utf8(Command::new("sh")
+                .arg("-c")
+                .arg(format!("qlist {}", package))
+                .output()
+                .expect("failed to get qlist output")
+                .stdout
+            ).expect("repo names are not UTF-8 compatible")
     }
 
     fn store_repo_hashes(&self) {

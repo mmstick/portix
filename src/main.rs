@@ -148,11 +148,11 @@ fn main() {
 
     let notebook = gtk::Notebook::new();
     let notebook_labels = ["Summary", "Dependencies", "Installed files", "Ebuild", "USE flags"];
-    let notebook_buffers = [gtk::TextBuffer::new(&gtk::TextTagTable::new()),
-                            gtk::TextBuffer::new(&gtk::TextTagTable::new()),
-                            gtk::TextBuffer::new(&gtk::TextTagTable::new()),
-                            gtk::TextBuffer::new(&gtk::TextTagTable::new()), 
-                            gtk::TextBuffer::new(&gtk::TextTagTable::new())];
+    let notebook_buffers = Rc::new([gtk::TextBuffer::new(&gtk::TextTagTable::new()),
+                                    gtk::TextBuffer::new(&gtk::TextTagTable::new()),
+                                    gtk::TextBuffer::new(&gtk::TextTagTable::new()),
+                                    gtk::TextBuffer::new(&gtk::TextTagTable::new()), 
+                                    gtk::TextBuffer::new(&gtk::TextTagTable::new())]);
     for (&label, buffer) in notebook_labels.iter().zip(notebook_buffers.iter()) {
         let scrolled_window = gtk::ScrolledWindow::new(None, None);
         scrolled_window.add(&gtk::TextView::new_with_buffer(buffer));
@@ -299,16 +299,79 @@ fn main() {
     });
 
     let conn_clone = conn.clone();
+    let combo_box_clone = combo_box.clone();
+    let notebook_clone = notebook.clone();
+    let notebook_buffers_clone = notebook_buffers.clone();
     tree_view_pkgs.get_selection().connect_changed(move |selected_pkg| {
         selected_pkg.set_mode(gtk::SelectionMode::Single);
 
         if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
             if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
+                let entry = combo_box_clone.get_active_text().unwrap_or("".to_string());
+
+                match notebook_clone.get_current_page() {
+                    Some(page) if page == 2 => {
+                        let query = if entry == "Sets" {
+                            let split: Vec<&str> = selected.split('/').collect();
+                            let package = match split.get(1) {
+                                Some(a) => *a,
+                                None => return,
+                            };
+                            package
+                        }
+                        else { &*selected };
+                        notebook_buffers_clone[page as usize].set_text(&conn_clone.query_file_list(&query));
+                    }
+                    Some(page) if page == 3 => {
+                        let query = if entry == "Sets" {
+                            let split: Vec<&str> = selected.split('/').collect();
+                            format!("SELECT ebuild_path
+                                     FROM ebuilds
+                                     WHERE ebuilds.name = '{}'",
+                                         match split.get(1) {
+                                             Some(a) => a,
+                                             None => return,
+                                         }
+                                   )
+                        }
+                        else {
+                            format!("SELECT ebuild_path
+                                     FROM ebuilds
+                                     WHERE ebuilds.name = '{}'", selected)
+                        };
+                        notebook_buffers_clone[page as usize].set_text(&conn_clone.query_ebuild(&query));
+
+                    }
+                    _ => return,
+                }
+
+            }
+        }
+    });
+
+    let conn_clone = conn.clone();
+    notebook.connect_switch_page(move |_, _, current_page| {
+        let package_selection = tree_view_pkgs.get_selection();
+        package_selection.set_mode(gtk::SelectionMode::Single);
+
+        if let Some((tree_model_pkg, tree_iter_pkg)) = package_selection.get_selected() {
+            if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
                 let entry = combo_box.get_active_text().unwrap_or("".to_string());
 
-                match notebook.get_current_page() {
-                    Some(page) if page == 2 => {}
-                    Some(page) if page == 3 => {
+                match current_page {
+                    page if page == 2 => {
+                        let query = if entry == "Sets" {
+                            let split: Vec<&str> = selected.split('/').collect();
+                            let package = match split.get(1) {
+                                Some(a) => *a,
+                                None => return,
+                            };
+                            package
+                        }
+                        else { &*selected };
+                        notebook_buffers[page as usize].set_text(&conn_clone.query_file_list(&query));
+                    }
+                    page if page == 3 => {
                         let query = if entry == "Sets" {
                             let split: Vec<&str> = selected.split('/').collect();
                             format!("SELECT ebuild_path

@@ -9,6 +9,7 @@ use std::fs;
 use std::io::prelude::*;
 use std::process::Command;
 use std::thread;
+use std::sync::{mpsc::channel, Arc, Mutex};
 
 pub const DB_PATH: &str = "./target/debug/portix.db";
 
@@ -227,57 +228,71 @@ impl PortixConnection for Connection {
                 .expect("failed to get repos list")
                 .stdout
             ).expect("repo names are not UTF-8 compatible");
-        let repos: Vec<String> = repos.trim().split(' ').map(|repo| repo.to_owned()).collect();
-        let mut csv_string = String::new();
+        let split = repos.trim().split(' ');
+        let recv_count = split.clone().count();
+        let repos: Vec<String> = split.map(|repo| repo.to_owned()).collect();
+        let csv_string = Arc::new(Mutex::new(String::new()));
+        let (sender, receiver) = channel();
 
         for repo in repos.into_iter() {
-            let repo_path = String::from_utf8(Command::new("sh")
-                    .arg("-c")
-                    .arg(format!("portageq get_repo_path / {}", repo))
-                    .output()
-                    .expect("failed to find repo path")
-                    .stdout
-                ).expect("repo path is not UTF-8 compatible");
-            let repo_path = repo_path.trim();
+            let csv_string_clone = csv_string.clone();
+            let sender_clone = sender.clone();
+            thread::spawn(move || {
+                sender_clone.send({
+                    let repo_path = String::from_utf8(Command::new("sh")
+                            .arg("-c")
+                            .arg(format!("portageq get_repo_path / {}", repo))
+                            .output()
+                            .expect("failed to find repo path")
+                            .stdout
+                        ).expect("repo path is not UTF-8 compatible");
+                    let repo_path = repo_path.trim();
 
-            for category_entry in fs::read_dir(repo_path).expect("repo path does not exist") {
-                let category_path = category_entry.expect("intermittent IO error").path();
-                let category = category_path.clone();
-                let category = category.file_name().unwrap().to_string_lossy();
-                if category_path.is_file() || category.starts_with(".") {
-                    continue;
-                }
+                    for category_entry in fs::read_dir(repo_path).expect("repo path does not exist") {
+                        let category_path = category_entry.expect("intermittent IO error").path();
+                        let category = category_path.clone();
+                        let category = category.file_name().unwrap().to_string_lossy();
+                        if category_path.is_file() || category.starts_with(".") {
+                            continue;
+                        }
 
-                for package_entry in fs::read_dir(category_path).expect("category path does not exist") {
-                    let package_path = package_entry.expect("intermittent IO error").path();
-                    let package = package_path.clone();
-                    let package = package.file_name().unwrap().to_string_lossy();
-                    if package_path.is_file() || package.starts_with(".") {
-                        continue;
-                    }
+                        for package_entry in fs::read_dir(category_path).expect("category path does not exist") {
+                            let package_path = package_entry.expect("intermittent IO error").path();
+                            let package = package_path.clone();
+                            let package = package.file_name().unwrap().to_string_lossy();
+                            if package_path.is_file() || package.starts_with(".") {
+                                continue;
+                            }
 
-                    for file_entry in fs::read_dir(package_path).unwrap() {
-                        let file_path = file_entry.expect("intermittent IO error").path();
-                        let file_string = file_path.file_name().unwrap().to_string_lossy();
-                        if file_string.ends_with(".ebuild") {
-                            let regex = Regex::new(r".*-(\d.*).ebuild").unwrap();
-                            let version = &regex.captures(&file_string).unwrap()[1];
-                            csv_string.push_str(&category);
-                            csv_string.push_str(",");
-                            csv_string.push_str(&package);
-                            csv_string.push_str(",");
-                            csv_string.push_str(version);
-                            csv_string.push_str(",");
-                            csv_string.push_str(&file_path.to_str().unwrap());
-                            csv_string.push_str("\n");
+                            for file_entry in fs::read_dir(package_path).unwrap() {
+                                let file_path = file_entry.expect("intermittent IO error").path();
+                                let file_string = file_path.file_name().unwrap().to_string_lossy();
+                                if file_string.ends_with(".ebuild") {
+                                    let regex = Regex::new(r".*-(\d.*).ebuild").unwrap();
+                                    let version = &regex.captures(&file_string).unwrap()[1];
+                                    csv_string_clone.try_lock().unwrap().push_str(&category);
+                                    csv_string_clone.try_lock().unwrap().push_str(",");
+                                    csv_string_clone.try_lock().unwrap().push_str(&package);
+                                    csv_string_clone.try_lock().unwrap().push_str(",");
+                                    csv_string_clone.try_lock().unwrap().push_str(version);
+                                    csv_string_clone.try_lock().unwrap().push_str(",");
+                                    csv_string_clone.try_lock().unwrap().push_str(&file_path.to_str().unwrap());
+                                    csv_string_clone.try_lock().unwrap().push_str("\n");
+                                }
+                            }
                         }
                     }
-                }
-            }
+                })
+            });
+
         }
-        csv_string.pop(); // pop out the last unneeded new line character
+
+        for _ in 0..recv_count {
+            receiver.recv().unwrap();
+        }
+        csv_string.try_lock().unwrap().pop(); // pop out the last unneeded new line character
         let mut ebuilds_csv = fs::File::create("./target/debug/portix_ebuilds.csv").expect("failed to create portix_ebuilds.csv file");
-        ebuilds_csv.write_all(&mut csv_string.as_bytes()).expect("failed to write to portix_ebuilds.csv file");
+        ebuilds_csv.write_all(&mut csv_string.try_lock().unwrap().as_bytes()).expect("failed to write to portix_ebuilds.csv file");
 
         self.execute_batch("DROP TABLE IF EXISTS ebuilds;
                             CREATE VIRTUAL TABLE ebuilds_vtab

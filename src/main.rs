@@ -324,7 +324,7 @@ fn main() {
                                 package
                             }
                             else { &*selected };
-                            notebook_buffers[page as usize].set_text(&conn.query_file_list(&query));
+                            notebook_buffers[page as usize].set_text(&backend::get_file_list(&query));
                         }
                         Some(page) if page == 3 => {
                             let query = if entry == "Sets" {
@@ -343,12 +343,10 @@ fn main() {
                                          FROM ebuilds
                                          WHERE ebuilds.name = '{}'", selected)
                             };
-                            notebook_buffers[page as usize].set_text(&conn.query_ebuild(&query));
-
+                            notebook_buffers[page as usize].set_text(&conn.get_ebuild_with_query(&query));
                         }
                         _ => return,
                     }
-
                 }
             }
         });
@@ -376,7 +374,7 @@ fn main() {
                                 package
                             }
                             else { &*selected };
-                            notebook_buffers[page as usize].set_text(&conn.query_file_list(&query));
+                            notebook_buffers[page as usize].set_text(&backend::get_file_list(&query));
                         }
                         page if page == 3 => {
                             let query = if entry == "Sets" {
@@ -395,7 +393,7 @@ fn main() {
                                          FROM ebuilds
                                          WHERE ebuilds.name = '{}'", selected)
                             };
-                            notebook_buffers[page as usize].set_text(&conn.query_ebuild(&query));
+                            notebook_buffers[page as usize].set_text(&conn.get_ebuild_with_query(&query));
                         }
                         _ => return,
                     }

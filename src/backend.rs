@@ -20,8 +20,8 @@ pub trait PortixConnection {
     fn parse_for_pkgs(&self);
     fn parse_for_sets(&self);
     fn parse_for_ebuilds(&self);
-    fn query_ebuild(&self, query: &str) -> String;
-    fn query_file_list(&self, package: &str) -> String;
+    fn get_ebuild_with_query(&self, query: &str) -> String;
+    fn get_search_count(&self, search: &str) -> i32;
     fn store_repo_hashes(&self);
     fn tables_need_reloading(&self) -> bool;
     fn tables_exist(&self) -> bool;
@@ -44,7 +44,7 @@ impl PortixConnection for Connection {
             String::from_utf8(
                 Command::new("sh")
                     .arg("-c")
-                    .arg(r#"qlist -ICcv|sed -e "s/\//\,/" -e "s/[\t ]/\,/" -e "s/\:/\,/""#)
+                    .arg(r#"portageq match / '*/*'|sed -re "s/-([0-9])/,\1/" -e "s/\//\,/g""#)
                     .output()
                     .expect("failed to get qlist output")
                     .stdout
@@ -296,7 +296,7 @@ impl PortixConnection for Connection {
             .expect("failed to remove portix_ebuilds.csv file due to lack of permissions");
     }
 
-    fn query_ebuild(&self, query: &str) -> String {
+    fn get_ebuild_with_query(&self, query: &str) -> String {
         let mut statement = self.prepare(query).expect("sql cannot be converted to a C string");
         let mut queries = statement.query(&[]).expect("failed to query database");
         if let Some(Ok(query)) = queries.next() {
@@ -310,14 +310,19 @@ impl PortixConnection for Connection {
         }
     }
 
-    fn query_file_list(&self, package: &str) -> String {
-        String::from_utf8(Command::new("sh")
-                .arg("-c")
-                .arg(format!("qlist {}", package))
-                .output()
-                .expect("failed to get qlist output")
-                .stdout
-            ).expect("repo names are not UTF-8 compatible")
+    fn get_search_count(&self, search: &str) -> i32 {
+        let count = format!(r#"SELECT count() as search_count
+                               FROM (
+                               SELECT *
+                               FROM all_packages
+                               WHERE all_packages.name LIKE '%{}%'
+                               GROUP BY all_packages.name
+                               ORDER BY all_packages.category ASC
+                               )"#,
+                               search);
+        let mut statement = self.prepare(&count).expect("sql cannot be converted to a C string");
+        let mut query_count = statement.query(&[]).expect("failed to query database");
+        query_count.next().unwrap().unwrap().get::<_, i32>(0)
     }
 
     fn store_repo_hashes(&self) {
@@ -408,4 +413,14 @@ impl PortixConnection for Connection {
         }
         false
     }
+}
+
+pub fn get_file_list(package: &str) -> String {
+    String::from_utf8(Command::new("sh")
+            .arg("-c")
+            .arg(format!("qlist {}", package))
+            .output()
+            .expect("failed to get qlist output")
+            .stdout
+        ).expect("repo names are not UTF-8 compatible")
 }

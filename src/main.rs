@@ -56,10 +56,10 @@ fn main() {
 
             match selection {
                 Request::Ebuilds(query) => {
-                    db_response_sender.send(Response::StringQuery(conn.query_ebuild(&query)));
+                    db_response_sender.send(Response::StringQuery(conn.get_ebuild_with_query(&query)));
                 },
                 Request::FileList(query) => {
-                    db_response_sender.send(Response::StringQuery(conn.query_file_list(&query)));
+                    db_response_sender.send(Response::StringQuery(backend::get_file_list(&query)));
                 }
                 Request::ModelCategory(query) => {
                     let mut statement = match conn.prepare(&query) {
@@ -276,6 +276,7 @@ fn main() {
         let db_response = db_response.clone();
         let db_request = db_request.clone();
         let tree_view_pkgs = tree_view_pkgs.clone();
+        let model_category = model_category.clone();
         combo_box.connect_changed(move |combo_box| {
             tree_view_pkgs.get_selection().unselect_all();
             if let Some(entry) = combo_box.get_active_text() {
@@ -292,10 +293,7 @@ fn main() {
                         "SELECT portage_set, count(DISTINCT category_and_name) as pkg_count
                          FROM portage_sets
                          GROUP BY portage_set",
-                    _ =>
-                        "SELECT category, count(DISTINCT name) as pkg_count
-                         FROM all_packages
-                         GROUP BY category",
+                    _ => return,
                 };
 
                 model_category.clear();

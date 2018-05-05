@@ -4,6 +4,7 @@ extern crate rusqlite;
 
 use std::thread;
 use std::rc::Rc;
+use std::sync::mpsc::{channel, TryRecvError};
 
 use backend::PortixConnection;
 
@@ -15,7 +16,106 @@ use rusqlite::Connection;
 
 mod backend;
 
+enum Request {
+    Ebuilds(String),
+    FileList(String),
+    ModelCategory(String),
+    Other(String),
+}
+
+enum Response {
+    Other(Vec<(String, String, String, String)>),
+    ModelCategory(Vec<(String, i32)>),
+    StringQuery(String)
+}
+
 fn main() {
+    let (db_request_sender, db_request_receiver) = channel::<Request>();
+    let (db_response_sender, db_response_receiver) = channel::<Response>();
+
+    thread::spawn(move || {
+        let conn = Connection::open(backend::DB_PATH).expect("failed to open connection");
+        rusqlite::vtab::csvtab::load_module(&conn).unwrap();
+        let conn = if !conn.tables_exist() {
+            loading_tables(conn)
+        } else if conn.tables_need_reloading() {
+            println!("*Database needs reloading again*");
+            loading_tables(conn)
+        } else {
+            conn
+        };
+
+        loop {
+            let selection = match db_request_receiver.recv() {
+                Ok(selection) => selection,
+                Err(why) => {
+                    eprintln!("error when receiving: {}", why);
+                    return;
+                }
+            };
+
+            match selection {
+                Request::Ebuilds(query) => {
+                    db_response_sender.send(Response::StringQuery(conn.query_ebuild(&query)));
+                },
+                Request::FileList(query) => {
+                    db_response_sender.send(Response::StringQuery(conn.query_file_list(&query)));
+                }
+                Request::ModelCategory(query) => {
+                    let mut statement = match conn.prepare(&query) {
+                        Ok(selection) => selection,
+                        Err(why) => {
+                            eprintln!("failed to prepare query: {}", why);
+                            continue
+                        }
+                    };
+
+                    let mut rows = match statement.query(&[]) {
+                        Ok(selection) => selection,
+                        Err(why) => {
+                            eprintln!("failed to query: {}", why);
+                            continue
+                        }
+                    };
+
+                    let mut response = Vec::new();
+                    while let Some(Ok(row)) = rows.next() {
+                        response.push((row.get::<_, String>(0), row.get::<_, i32>(1)));
+                    }
+
+                    db_response_sender.send(Response::ModelCategory(response));
+                }
+                Request::Other(query) => {
+                    let mut statement = match conn.prepare(&query) {
+                        Ok(selection) => selection,
+                        Err(why) => {
+                            eprintln!("failed to prepare query: {}", why);
+                            continue
+                        }
+                    };
+
+                    let mut rows = match statement.query(&[]) {
+                        Ok(selection) => selection,
+                        Err(why) => {
+                            eprintln!("failed to query: {}", why);
+                            continue
+                        }
+                    };
+
+                    let mut response = Vec::new();
+                    while let Some(Ok(row)) = rows.next() {
+                        response.push((row.get::<_, String>(0), row.get::<_, String>(1), row.get::<_, String>(2), row.get::<_, String>(3)));
+                    }
+
+                    db_response_sender.send(Response::Other(response));
+                }
+            };
+        }
+    });
+
+    let db_request = Rc::new(db_request_sender);
+    let db_response = Rc::new(db_response_receiver);
+
     if gtk::init().is_err() {
         println!("failed to initialize GTK.");
     }
@@ -35,21 +135,6 @@ fn main() {
         println!("Done");
         conn
     }
-
-    let conn = Connection::open(backend::DB_PATH).unwrap();
-    rusqlite::vtab::csvtab::load_module(&conn).unwrap();
-    let child = thread::spawn(move || {
-            if !conn.tables_exist() {
-                loading_tables(conn)
-            }
-            else if conn.tables_need_reloading() {
-                println!("*Database needs reloading again*");
-                loading_tables(conn)
-            }
-            else {
-                conn
-            }
-        });
 
     let menubar = gtk::MenuBar::new();
     menubar.append(&gtk::MenuItem::new_with_label(&"Actions"));
@@ -106,14 +191,24 @@ fn main() {
     let column_pkg_num = make_tree_view_column("# Pkgs", 1);
 
     let model_category = gtk::ListStore::new(&[gtk::Type::String, gtk::Type::U64]);
-    let conn = Rc::new(child.join().unwrap());
-    let mut statement = conn.prepare("SELECT category, count(DISTINCT name) as pkg_count
-                                      FROM all_packages
-                                      GROUP BY category").expect("sql cannot be converted to a C string");
-    let mut rows = statement.query(&[]).expect("failed to query database");
 
-    while let Some(Ok(row)) = rows.next() {
-        model_category.insert_with_values(None, &[0,1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
+    db_request.send(Request::ModelCategory("SELECT category, count(DISTINCT name) as pkg_count
+                                      FROM all_packages
+                                      GROUP BY category".into()));
+    match db_response.recv() {
+        Ok(Response::ModelCategory(rows)) => {
+            for row in rows {
+                model_category.insert_with_values(None, &[0, 1], &[&row.0, &row.1]);
+            }
+        }
+        Ok(_) => {
+            eprintln!("invalid response");
+            return;
+        }
+        Err(why) => {
+            eprintln!("failed to receive: {}", why);
+            return;
+        }
     }
 
     let tree_view_category = gtk::TreeView::new_with_model(&model_category);
@@ -151,7 +246,7 @@ fn main() {
     let notebook_buffers = Rc::new([gtk::TextBuffer::new(&gtk::TextTagTable::new()),
                                     gtk::TextBuffer::new(&gtk::TextTagTable::new()),
                                     gtk::TextBuffer::new(&gtk::TextTagTable::new()),
-                                    gtk::TextBuffer::new(&gtk::TextTagTable::new()), 
+                                    gtk::TextBuffer::new(&gtk::TextTagTable::new()),
                                     gtk::TextBuffer::new(&gtk::TextTagTable::new())]);
     for (&label, buffer) in notebook_labels.iter().zip(notebook_buffers.iter()) {
         let scrolled_window = gtk::ScrolledWindow::new(None, None);
@@ -178,10 +273,10 @@ fn main() {
     window.show_all();
 
     {
-        let conn = conn.clone();
+        let db_response = db_response.clone();
+        let db_request = db_request.clone();
         let tree_view_pkgs = tree_view_pkgs.clone();
         combo_box.connect_changed(move |combo_box| {
-            model_category.clear();
             tree_view_pkgs.get_selection().unselect_all();
             if let Some(entry) = combo_box.get_active_text() {
                 let selection = match &*entry {
@@ -202,18 +297,39 @@ fn main() {
                          FROM all_packages
                          GROUP BY category",
                 };
-                let mut statement = conn.prepare(selection).expect("sql cannot be converted to a C string");
-                let mut rows = statement.query(&[]).expect("failed to query database");
 
-                while let Some(Ok(row)) = rows.next() {
-                    model_category.insert_with_values(None, &[0, 1], &[&row.get::<_, String>(0), &row.get::<_, i32>(1)]);
-                }
+                model_category.clear();
+                db_request.send(Request::ModelCategory(selection.into()));
+
+                let model_category = model_category.clone();
+                let db_response = db_response.clone();
+                gtk::timeout_add(100, move || {
+
+                    match db_response.try_recv() {
+                        Ok(Response::ModelCategory(rows)) => {
+                            for row in rows {
+                                model_category.insert_with_values(None, &[0, 1], &[&row.0, &row.1]);
+                            }
+                            Continue(false)
+                        }
+                        Ok(_) => {
+                            eprintln!("invalid response");
+                            Continue(false)
+                        }
+                        Err(TryRecvError::Empty) => Continue(true),
+                        Err(why) => {
+                            eprintln!("failed to receive: {}", why);
+                            Continue(false)
+                        }
+                    }
+                });
             }
         });
     }
 
     {
-        let conn = conn.clone();
+        let db_response = db_response.clone();
+        let db_request = db_request.clone();
         let combo_box = combo_box.clone();
         let tree_view_pkgs = tree_view_pkgs.clone();
         let model_pkg_list = model_pkg_list.clone();
@@ -293,18 +409,38 @@ fn main() {
                                         ORDER BY all_packages.category ASC"#,
                                         selected),
                     };
-                    let mut statement = conn.prepare(&selection).expect("sql cannot be converted to a C string");
-                    let mut pkg_rows = statement.query(&[]).expect("failed to query database");
-                    while let Some(Ok(row)) = pkg_rows.next() {
-                        model_pkg_list.insert_with_values(None, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
-                    }
+
+                    db_request.send(Request::Other(selection));
+
+                    let model_pkg_list = model_pkg_list.clone();
+                    let db_response = db_response.clone();
+                    gtk::timeout_add(100, move || {
+                        match db_response.try_recv() {
+                            Ok(Response::Other(pkg_rows)) => {
+                                for row in pkg_rows {
+                                    model_pkg_list.insert_with_values(None, &[0, 1, 2, 3], &[&row.0, &row.1, &row.2, &row.3]);
+                                }
+                                Continue(false)
+                            },
+                            Ok(_) => {
+                                eprintln!("invalid response");
+                                Continue(false)
+                            }
+                            Err(TryRecvError::Empty) => Continue(true),
+                            Err(why) => {
+                                eprintln!("error when receiving: {}", why);
+                                Continue(false)
+                            }
+                        }
+                    });
                 }
             }
         });
     }
 
     {
-        let conn = conn.clone();
+        let db_response = db_response.clone();
+        let db_request = db_request.clone();
         let combo_box = combo_box.clone();
         let notebook = notebook.clone();
         let notebook_buffers = notebook_buffers.clone();
@@ -314,50 +450,70 @@ fn main() {
             if let Some((tree_model_pkg, tree_iter_pkg)) = selected_pkg.get_selected() {
                 if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
                     let entry = combo_box.get_active_text().unwrap_or("".to_string());
-
-                    match notebook.get_current_page() {
-                        Some(page) if page == 2 => {
-                            let query = if entry == "Sets" {
-                                let split: Vec<&str> = selected.split('/').collect();
-                                let package = match split.get(1) {
-                                    Some(a) => *a,
-                                    None => return,
-                                };
-                                package
+                    if let Some(current_page) = notebook.get_current_page() {
+                        let query = match current_page {
+                            page if page == 2 => {
+                                Request::FileList(if entry == "Sets" {
+                                    let split: Vec<&str> = selected.split('/').collect();
+                                    let package = match split.get(1) {
+                                        Some(a) => *a,
+                                        None => return,
+                                    };
+                                    package.into()
+                                }
+                                else { selected })
                             }
-                            else { &*selected };
-                            notebook_buffers[page as usize].set_text(&conn.query_file_list(&query));
-                        }
-                        Some(page) if page == 3 => {
-                            let query = if entry == "Sets" {
-                                let split: Vec<&str> = selected.split('/').collect();
-                                format!("SELECT ebuild_path
-                                         FROM ebuilds
-                                         WHERE ebuilds.name = '{}'",
-                                             match split.get(1) {
-                                                 Some(a) => a,
-                                                 None => return,
-                                             }
-                                       )
+                            page if page == 3 => {
+                                Request::Ebuilds(if entry == "Sets" {
+                                    let split: Vec<&str> = selected.split('/').collect();
+                                    format!("SELECT ebuild_path
+                                             FROM ebuilds
+                                             WHERE ebuilds.name = '{}'",
+                                                 match split.get(1) {
+                                                     Some(a) => a,
+                                                     None => return,
+                                                 }
+                                           )
+                                }
+                                else {
+                                    format!("SELECT ebuild_path
+                                             FROM ebuilds
+                                             WHERE ebuilds.name = '{}'", selected)
+                                })
                             }
-                            else {
-                                format!("SELECT ebuild_path
-                                         FROM ebuilds
-                                         WHERE ebuilds.name = '{}'", selected)
-                            };
-                            notebook_buffers[page as usize].set_text(&conn.query_ebuild(&query));
+                            _ => return,
+                        };
 
-                        }
-                        _ => return,
+                        db_request.send(query);
+
+                        let notebook_buffers = notebook_buffers.clone();
+                        let db_response = db_response.clone();
+                        gtk::timeout_add(100, move || {
+                            match db_response.try_recv() {
+                                Ok(Response::StringQuery(response)) => {
+                                    notebook_buffers[current_page as usize].set_text(&response);
+                                    Continue(false)
+                                },
+                                Ok(_) => {
+                                    eprintln!("invalid response");
+                                    Continue(false)
+                                }
+                                Err(TryRecvError::Empty) => Continue(true),
+                                Err(why) => {
+                                    eprintln!("error when receiving: {}", why);
+                                    Continue(false)
+                                }
+                            }
+                        });
                     }
-
                 }
             }
         });
     }
 
     {
-        let conn = conn.clone();
+        let db_response = db_response.clone();
+        let db_request = db_request.clone();
         notebook.connect_switch_page(move |_, _, current_page| {
             let package_selection = tree_view_pkgs.get_selection();
             package_selection.set_mode(gtk::SelectionMode::Single);
@@ -366,21 +522,20 @@ fn main() {
                 if let Some(selected) = tree_model_pkg.get_value(&tree_iter_pkg, 0).get::<String>() {
                     let entry = combo_box.get_active_text().unwrap_or("".to_string());
 
-                    match current_page {
+                    let query = match current_page {
                         page if page == 2 => {
-                            let query = if entry == "Sets" {
+                            Request::FileList(if entry == "Sets" {
                                 let split: Vec<&str> = selected.split('/').collect();
                                 let package = match split.get(1) {
                                     Some(a) => *a,
                                     None => return,
                                 };
-                                package
+                                package.into()
                             }
-                            else { &*selected };
-                            notebook_buffers[page as usize].set_text(&conn.query_file_list(&query));
+                            else { selected })
                         }
                         page if page == 3 => {
-                            let query = if entry == "Sets" {
+                            Request::Ebuilds(if entry == "Sets" {
                                 let split: Vec<&str> = selected.split('/').collect();
                                 format!("SELECT ebuild_path
                                          FROM ebuilds
@@ -395,49 +550,82 @@ fn main() {
                                 format!("SELECT ebuild_path
                                          FROM ebuilds
                                          WHERE ebuilds.name = '{}'", selected)
-                            };
-                            notebook_buffers[page as usize].set_text(&conn.query_ebuild(&query));
-
+                            })
                         }
                         _ => return,
-                    }
+                    };
+
+                    db_request.send(query);
+                    let db_response = db_response.clone();
+                    let notebook_buffers = notebook_buffers.clone();
+                    gtk::timeout_add(100, move || {
+                        match db_response.try_recv() {
+                            Ok(Response::StringQuery(response)) => {
+                                notebook_buffers[current_page as usize].set_text(&response);
+                                Continue(false)
+                            },
+                            Ok(_) => {
+                                eprintln!("invalid response");
+                                Continue(false)
+                            }
+                            Err(TryRecvError::Empty) => Continue(true),
+                            Err(why) => {
+                                eprintln!("error when receiving: {}", why);
+                                Continue(false)
+                            }
+                        }
+                    });
                 }
             }
         });
     }
 
     {
-        let conn = conn.clone();
+        let db_response = db_response.clone();
+        let db_request = db_request.clone();
         search_entry.connect_activate(move |search_entry| {
-            let conn = conn.clone();
             let search_entry = search_entry.clone();
-            let model_pkg_list = model_pkg_list.clone();
-            gtk::timeout_add(100, move || {
-                model_pkg_list.clear();
+            model_pkg_list.clear();
 
-                if let Some(search) = search_entry.get_text() {
-                    let query = format!(r#"SELECT all_packages.name AS package_name,
-                                           IFNULL(installed_packages.version, "") AS installed_version,
-                                           IFNULL(recommended_packages.version, "Not available") AS recommended_version,
-                                           all_packages.description AS description
-                                           FROM all_packages
-                                           LEFT JOIN installed_packages
-                                           ON all_packages.category = installed_packages.category
-                                           AND all_packages.name = installed_packages.name
-                                           LEFT JOIN recommended_packages
-                                           ON all_packages.category = recommended_packages.category
-                                           AND all_packages.name = recommended_packages.name
-                                           WHERE all_packages.name LIKE '%{}%'
-                                           GROUP BY package_name
-                                           ORDER BY all_packages.category ASC"#,
-                                           search);
-                    let mut statement = conn.prepare(&query).expect("sql cannot be converted to a C string");
-                    let mut pkg_rows = statement.query(&[]).expect("failed to query database");
-                    while let Some(Ok(row)) = pkg_rows.next() {
-                        model_pkg_list.insert_with_values(None, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
+            if let Some(search) = search_entry.get_text() {
+                let query = format!(r#"SELECT all_packages.name AS package_name,
+                                       IFNULL(installed_packages.version, "") AS installed_version,
+                                       IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                       all_packages.description AS description
+                                       FROM all_packages
+                                       LEFT JOIN installed_packages
+                                       ON all_packages.category = installed_packages.category
+                                       AND all_packages.name = installed_packages.name
+                                       LEFT JOIN recommended_packages
+                                       ON all_packages.category = recommended_packages.category
+                                       AND all_packages.name = recommended_packages.name
+                                       WHERE all_packages.name LIKE '%{}%'
+                                       GROUP BY package_name
+                                       ORDER BY all_packages.category ASC"#,
+                                       search);
+                db_request.send(Request::Other(query));
+            }
+
+            let model_pkg_list = model_pkg_list.clone();
+            let db_response = db_response.clone();
+            gtk::timeout_add(100, move || {
+                match db_response.try_recv() {
+                    Ok(Response::Other(pkg_rows)) => {
+                        for row in pkg_rows {
+                            model_pkg_list.insert_with_values(None, &[0, 1, 2, 3], &[&row.0, &row.1, &row.2, &row.3]);
+                        }
+                        Continue(false)
+                    },
+                    Ok(_) => {
+                        eprintln!("invalid response");
+                        Continue(false)
+                    }
+                    Err(TryRecvError::Empty) => Continue(true),
+                    Err(why) => {
+                        eprintln!("error when receiving: {}", why);
+                        Continue(false)
                     }
                 }
-                gtk::Continue(false)
             });
         });
     }

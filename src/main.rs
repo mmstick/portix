@@ -2,7 +2,6 @@ extern crate gtk;
 //extern crate glib;
 extern crate rusqlite;
 
-use std::sync::mpsc::channel;
 use std::thread;
 use std::rc::Rc;
 
@@ -181,6 +180,7 @@ fn main() {
     {
         let conn = conn.clone();
         let tree_view_pkgs = tree_view_pkgs.clone();
+        let model_category = model_category.clone();
         combo_box.connect_changed(move |combo_box| {
             model_category.clear();
             tree_view_pkgs.get_selection().unselect_all();
@@ -403,12 +403,11 @@ fn main() {
     }
 
     {
-        //let (sender1, receiver1) = channel();
-        //let (sender2, receiver2) = channel(); 
         let conn = conn.clone();
         search_entry.connect_activate(move |search_entry| {
             let conn = conn.clone();
             let search_entry = search_entry.clone();
+            let model_category = model_category.clone();
             let model_pkg_list = model_pkg_list.clone();
             let combo_box = combo_box.clone();
             gtk::timeout_add(100, move || {
@@ -419,6 +418,22 @@ fn main() {
                         return gtk::Continue(false);
                     }
                     combo_box.set_active(2);
+                    model_category.clear();
+
+                    let count = format!(r#"SELECT count() as search_count
+                                           FROM (
+                                           SELECT *
+                                           FROM all_packages
+                                           WHERE all_packages.name LIKE '%{}%'
+                                           GROUP BY all_packages.name
+                                           ORDER BY all_packages.category ASC
+                                           )"#,
+                                           search);
+                    let mut statement = conn.prepare(&count).expect("sql cannot be converted to a C string");
+                    let mut query_count = statement.query(&[]).expect("failed to query database");
+                    let search_count = query_count.next().unwrap().unwrap().get::<_, i32>(0);
+                    model_category.insert_with_values(None, &[0, 1], &[&search, &search_count]);
+
                     let query = format!(r#"SELECT all_packages.name AS package_name,
                                            IFNULL(installed_packages.version, "") AS installed_version,
                                            IFNULL(recommended_packages.version, "Not available") AS recommended_version,

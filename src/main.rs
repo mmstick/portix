@@ -420,19 +420,7 @@ fn main() {
                     combo_box.set_active(2);
                     model_category.clear();
 
-                    let count = format!(r#"SELECT count() as search_count
-                                           FROM (
-                                           SELECT *
-                                           FROM all_packages
-                                           WHERE all_packages.name LIKE '%{}%'
-                                           GROUP BY all_packages.name
-                                           ORDER BY all_packages.category ASC
-                                           )"#,
-                                           search);
-                    let mut statement = conn.prepare(&count).expect("sql cannot be converted to a C string");
-                    let mut query_count = statement.query(&[]).expect("failed to query database");
-                    let search_count = query_count.next().unwrap().unwrap().get::<_, i32>(0);
-                    model_category.insert_with_values(None, &[0, 1], &[&search, &search_count]);
+                    model_category.insert_with_values(None, &[0, 1], &[&search, &conn.get_search_count(&search)]);
 
                     let query = format!(r#"SELECT all_packages.name AS package_name,
                                            IFNULL(installed_packages.version, "") AS installed_version,

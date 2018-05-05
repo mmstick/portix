@@ -21,6 +21,7 @@ pub trait PortixConnection {
     fn parse_for_sets(&self);
     fn parse_for_ebuilds(&self);
     fn get_ebuild_with_query(&self, query: &str) -> String;
+    fn get_search_count(&self, search: &str) -> i32;
     fn store_repo_hashes(&self);
     fn tables_need_reloading(&self) -> bool;
     fn tables_exist(&self) -> bool;
@@ -307,6 +308,21 @@ impl PortixConnection for Connection {
         else {
             String::new()
         }
+    }
+
+    fn get_search_count(&self, search: &str) -> i32 {
+        let count = format!(r#"SELECT count() as search_count
+                               FROM (
+                               SELECT *
+                               FROM all_packages
+                               WHERE all_packages.name LIKE '%{}%'
+                               GROUP BY all_packages.name
+                               ORDER BY all_packages.category ASC
+                               )"#,
+                               search);
+        let mut statement = self.prepare(&count).expect("sql cannot be converted to a C string");
+        let mut query_count = statement.query(&[]).expect("failed to query database");
+        query_count.next().unwrap().unwrap().get::<_, i32>(0)
     }
 
     fn store_repo_hashes(&self) {

@@ -399,12 +399,16 @@ fn main() {
     });
 
     let conn_clone = conn.clone();
-    let model_pkg_list_clone = model_pkg_list.clone();
-    gtk::timeout_add(100, move || {
-        search_entry.connect_activate(move |entry| {
+    let search_entry_clone1 = search_entry.clone();
+    let search_entry_clone2 = search_entry.clone();
+    search_entry_clone1.connect_activate(move |_| {
+        let conn_clone = conn_clone.clone();
+        let search_entry_clone3 = search_entry_clone2.clone();
+        let model_pkg_list_clone = model_pkg_list.clone();
+        gtk::timeout_add(100, move || {
             model_pkg_list_clone.clear();
 
-            if let Some(search) = entry.get_text() {
+            if let Some(search) = search_entry_clone3.get_text() {
                 let query = format!(r#"SELECT all_packages.name AS package_name,
                                        IFNULL(installed_packages.version, "") AS installed_version,
                                        IFNULL(recommended_packages.version, "Not available") AS recommended_version,
@@ -426,8 +430,8 @@ fn main() {
                     model_pkg_list_clone.insert_with_values(None, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
                 }
             }
+            gtk::Continue(false)
         });
-        gtk::Continue(false)
     });
 
     window.connect_delete_event(|_, _| {

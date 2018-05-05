@@ -83,14 +83,14 @@ fn main() {
     }
     combo_box.set_active(0); // Set "All Packages" to be default
 
-    let search = gtk::SearchEntry::new();
-    search.set_hexpand(true);
+    let search_entry = gtk::SearchEntry::new();
+    search_entry.set_hexpand(true);
 
     let hbox1 = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     hbox1.add(&gtk::Label::new("View: "));
     hbox1.add(&combo_box);
     hbox1.add(&gtk::Button::new_with_label("Refresh"));
-    hbox1.add(&search);
+    hbox1.add(&search_entry);
 
     pub fn make_tree_view_column(title: &str, column_number: i32) -> gtk::TreeViewColumn {
         let column = gtk::TreeViewColumn::new();
@@ -213,8 +213,9 @@ fn main() {
     let conn_clone = conn.clone();
     let combo_box_clone = combo_box.clone();
     let tree_view_pkgs_clone = tree_view_pkgs.clone();
+    let model_pkg_list_clone = model_pkg_list.clone();
     tree_view_category.get_selection().connect_changed(move |selected_category| {
-        model_pkg_list.clear();
+        model_pkg_list_clone.clear();
         tree_view_pkgs_clone.get_selection().unselect_all();
         selected_category.set_mode(gtk::SelectionMode::Single);
 
@@ -292,7 +293,7 @@ fn main() {
                 let mut statement = conn_clone.prepare(&selection).expect("sql cannot be converted to a C string");
                 let mut pkg_rows = statement.query(&[]).expect("failed to query database");
                 while let Some(Ok(row)) = pkg_rows.next() {
-                    model_pkg_list.insert_with_values(None, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
+                    model_pkg_list_clone.insert_with_values(None, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
                 }
             }
         }
@@ -393,9 +394,40 @@ fn main() {
                     }
                     _ => return,
                 }
-
             }
         }
+    });
+
+    let conn_clone = conn.clone();
+    let model_pkg_list_clone = model_pkg_list.clone();
+    gtk::timeout_add(100, move || {
+        search_entry.connect_activate(move |entry| {
+            model_pkg_list_clone.clear();
+
+            if let Some(search) = entry.get_text() {
+                let query = format!(r#"SELECT all_packages.name AS package_name,
+                                       IFNULL(installed_packages.version, "") AS installed_version,
+                                       IFNULL(recommended_packages.version, "Not available") AS recommended_version,
+                                       all_packages.description AS description
+                                       FROM all_packages
+                                       LEFT JOIN installed_packages
+                                       ON all_packages.category = installed_packages.category
+                                       AND all_packages.name = installed_packages.name
+                                       LEFT JOIN recommended_packages
+                                       ON all_packages.category = recommended_packages.category
+                                       AND all_packages.name = recommended_packages.name
+                                       WHERE all_packages.name LIKE '%{}%'
+                                       GROUP BY package_name
+                                       ORDER BY all_packages.category ASC"#,
+                                       search);
+                let mut statement = conn_clone.prepare(&query).expect("sql cannot be converted to a C string");
+                let mut pkg_rows = statement.query(&[]).expect("failed to query database");
+                while let Some(Ok(row)) = pkg_rows.next() {
+                    model_pkg_list_clone.insert_with_values(None, &[0, 1, 2, 3], &[&row.get::<_, String>(0), &row.get::<_, String>(1), &row.get::<_, String>(2), &row.get::<_, String>(3)]);
+                }
+            }
+        });
+        gtk::Continue(false)
     });
 
     window.connect_delete_event(|_, _| {

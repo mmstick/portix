@@ -43,7 +43,7 @@ impl PortixConnection for Connection {
             String::from_utf8(
                 Command::new("sh")
                     .arg("-c")
-                    .arg(r#"qlist -ICcv|sed -e "s/\//\,/" -e "s/[\t ]/\,/" -e "s/\:/\,/""#)
+                    .arg(r#"portageq match / '*/*'|sed -re "s/-([0-9])/,\1/" -e "s/\//\,/g""#)
                     .output()
                     .expect("failed to get qlist output")
                     .stdout

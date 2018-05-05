@@ -2,6 +2,7 @@ extern crate gtk;
 //extern crate glib;
 extern crate rusqlite;
 
+use std::sync::mpsc::channel;
 use std::thread;
 use std::rc::Rc;
 
@@ -197,10 +198,7 @@ fn main() {
                         "SELECT portage_set, count(DISTINCT category_and_name) as pkg_count
                          FROM portage_sets
                          GROUP BY portage_set",
-                    _ =>
-                        "SELECT category, count(DISTINCT name) as pkg_count
-                         FROM all_packages
-                         GROUP BY category",
+                    _ => return,
                 };
                 let mut statement = conn.prepare(selection).expect("sql cannot be converted to a C string");
                 let mut rows = statement.query(&[]).expect("failed to query database");
@@ -358,6 +356,7 @@ fn main() {
 
     {
         let conn = conn.clone();
+        let combo_box = combo_box.clone();
         notebook.connect_switch_page(move |_, _, current_page| {
             let package_selection = tree_view_pkgs.get_selection();
             package_selection.set_mode(gtk::SelectionMode::Single);
@@ -397,7 +396,6 @@ fn main() {
                                          WHERE ebuilds.name = '{}'", selected)
                             };
                             notebook_buffers[page as usize].set_text(&conn.query_ebuild(&query));
-
                         }
                         _ => return,
                     }
@@ -407,15 +405,22 @@ fn main() {
     }
 
     {
+        //let (sender1, receiver1) = channel();
+        //let (sender2, receiver2) = channel(); 
         let conn = conn.clone();
         search_entry.connect_activate(move |search_entry| {
             let conn = conn.clone();
             let search_entry = search_entry.clone();
             let model_pkg_list = model_pkg_list.clone();
+            let combo_box = combo_box.clone();
             gtk::timeout_add(100, move || {
                 model_pkg_list.clear();
 
                 if let Some(search) = search_entry.get_text() {
+                    if search.is_empty() {
+                        return gtk::Continue(false);
+                    }
+                    combo_box.set_active(2);
                     let query = format!(r#"SELECT all_packages.name AS package_name,
                                            IFNULL(installed_packages.version, "") AS installed_version,
                                            IFNULL(recommended_packages.version, "Not available") AS recommended_version,
